@@ -1,0 +1,55 @@
+name: Build EXE
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unpack newest aurora-exe zip
+        run: |
+          Z=$(ls aurora-exe-v*.zip 2>/dev/null | sort -V | tail -1 || true)
+          if [ -z "$Z" ]; then echo "::error::no aurora-exe-v*.zip in repo root"; exit 1; fi
+          echo "Archive: $Z"
+          rm -rf exe
+          unzip -q "$Z" 'exe/*'
+          test -f exe/app/build.gradle.kts || { echo "::error::no exe/app/build.gradle.kts in archive"; exit 1; }
+          grep -E 'versionName|applicationId' exe/app/build.gradle.kts
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.9
+
+      - name: Signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > exe/app/aurora.jks
+            echo "key from secret"
+          elif [ -f app/aurora.jks ]; then
+            cp app/aurora.jks exe/app/aurora.jks
+            echo "key from repo"
+          else
+            echo "no key: temporary debug signing"
+          fi
+
+      - name: Build
+        working-directory: exe
+        env:
+          KS_PASS: ${{ secrets.KS_PASS }}
+          KS_ALIAS: ${{ secrets.KS_ALIAS }}
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: avrora-exe
+          path: exe/app/build/outputs/apk/debug/*.apk

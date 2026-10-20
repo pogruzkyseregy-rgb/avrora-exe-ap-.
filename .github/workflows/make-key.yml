@@ -1,0 +1,33 @@
+name: Make signing key
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  key:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create key if there is none
+        run: |
+          if [ -f signing/aurora.jks ]; then
+            echo "Key already exists, nothing to do"
+            exit 0
+          fi
+          mkdir -p signing
+          PASS=$(head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 24)
+          echo "::add-mask::$PASS"
+          keytool -genkeypair -keystore signing/aurora.jks -storepass "$PASS" -keypass "$PASS" \
+            -alias aurora -keyalg RSA -keysize 2048 -validity 36500 \
+            -dname "CN=Avrora EXE, O=Avrora, C=RU"
+          printf '%s\n' "$PASS" > signing/pass.txt
+          git config user.name "build"
+          git config user.email "build@users.noreply.github.com"
+          git add signing
+          git commit -m "signing key"
+          git push
+          echo "Key created and saved in folder signing"

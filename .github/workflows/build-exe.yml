@@ -29,24 +29,20 @@ jobs:
           gradle-version: 8.9
 
       - name: Signing key
-        env:
-          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
         run: |
-          if [ -n "$KEYSTORE_B64" ]; then
-            echo "$KEYSTORE_B64" | base64 -d > exe/app/aurora.jks
-            echo "key from secret"
-          elif [ -f app/aurora.jks ]; then
-            cp app/aurora.jks exe/app/aurora.jks
-            echo "key from repo"
+          if [ -f signing/aurora.jks ] && [ -f signing/pass.txt ]; then
+            cp signing/aurora.jks exe/app/aurora.jks
+            PASS=$(cat signing/pass.txt)
+            echo "::add-mask::$PASS"
+            echo "KS_PASS=$PASS" >> "$GITHUB_ENV"
+            echo "KS_ALIAS=aurora" >> "$GITHUB_ENV"
+            echo "key from folder signing (permanent)"
           else
-            echo "no key: temporary debug signing"
+            echo "NO KEY: temporary debug signing, update over old app will not work"
           fi
 
       - name: Build
         working-directory: exe
-        env:
-          KS_PASS: ${{ secrets.KS_PASS }}
-          KS_ALIAS: ${{ secrets.KS_ALIAS }}
         run: gradle assembleDebug --no-daemon --stacktrace
 
       - uses: actions/upload-artifact@v4

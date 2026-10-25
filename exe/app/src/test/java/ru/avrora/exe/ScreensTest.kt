@@ -37,6 +37,7 @@ class ScreensTest {
         p.bootScreen = false
         p.theme = theme
         AppTheme.set(theme)
+        HesperaStore(ctx).chatWho = WHO_AURORA
         val now = System.currentTimeMillis()
         fun msgs(vararg m: Pair<String, String>) = messagesToJson(m.mapIndexed { i, (r, c) -> ChatMessage(r, c, now - (m.size - i) * 60_000L) })
         File(ctx.filesDir, "chat.json").writeText(msgs(

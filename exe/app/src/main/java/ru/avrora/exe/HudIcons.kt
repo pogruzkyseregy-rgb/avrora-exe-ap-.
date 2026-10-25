@@ -48,8 +48,10 @@ fun Modifier.cornerBrackets(color: Color, len: Dp = 7.dp, width: Dp = 1.5.dp): M
 
 internal fun DrawScope.drawGlyph(g: Glyph, c: Color) {
     val s = size.minDimension
-    val w = s * 0.085f
-    val st = Stroke(width = w, cap = StrokeCap.Round)
+    // «Чернила» — жирная тушь с рублеными концами, «Коралл» — тонкая линия HUD
+    val frame = AppTheme.current.frame
+    val w = s * when (frame) { "mecha" -> 0.11f; "hud" -> 0.065f; else -> 0.085f }
+    val st = Stroke(width = w, cap = if (frame == "mecha") StrokeCap.Square else StrokeCap.Round)
     fun o(x: Float, y: Float) = Offset(x * s, y * s)
     when (g) {
         Glyph.Profile -> {

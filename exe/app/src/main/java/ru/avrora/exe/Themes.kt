@@ -123,7 +123,7 @@ private fun DrawScope.ink(t: Palette, dots: List<Triple<Float, Float, Float>>) {
     val blob = Offset(w * 1.02f, h * 0.04f)
     dots.take(14).forEachIndexed { i, (x, y, r) ->
         val c = Offset(blob.x - x * w * 0.28f, blob.y + y * h * 0.12f)
-        drawCircle(ink.copy(alpha = 0.035f + 0.02f * (i % 3)), radius = w * (0.04f + r * 0.08f), center = c)
+        drawCircle(ink.copy(alpha = 0.06f + 0.03f * (i % 3)), radius = w * (0.04f + r * 0.08f), center = c)
     }
     // всплеск: клинья-лучи из точки в левом нижнем углу
     val o = Offset(w * 0.08f, h * 0.9f)
@@ -139,7 +139,7 @@ private fun DrawScope.ink(t: Palette, dots: List<Triple<Float, Float, Float>>) {
             lineTo(start.x - nrm.x, start.y - nrm.y)
             close()
         }
-        drawPath(p, ink.copy(alpha = 0.05f + 0.025f * (i % 2)))
+        drawPath(p, ink.copy(alpha = 0.07f + 0.03f * (i % 2)))
     }
     drawCircle(t.night, radius = w * 0.045f, center = o)
     // брызги
@@ -158,8 +158,8 @@ private fun DrawScope.ink(t: Palette, dots: List<Triple<Float, Float, Float>>) {
 private fun DrawScope.coral(t: Palette, phase: Float) {
     val w = size.width
     val h = size.height
-    val c = t.glow.copy(alpha = 0.28f)
-    val dim = t.glow.copy(alpha = 0.14f)
+    val c = t.glow.copy(alpha = 0.42f)
+    val dim = t.glow.copy(alpha = 0.22f)
     // боковые скобы
     for (side in listOf(0f, 1f)) {
         val x = if (side == 0f) w * 0.035f else w * 0.965f

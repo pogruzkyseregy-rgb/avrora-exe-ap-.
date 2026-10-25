@@ -58,7 +58,7 @@ val THEMES = listOf(
     ),
     Palette(
         "ink", "Чернила", "светлая: бумага, тушь и красный, техно-панели со срезами",
-        Color(0xFFE9E8E4), Color(0xFFF6F5F2), Color(0xFFFFFFFF), Color(0xFFDCDAD5),
+        Color(0xFFE8E6E1), Color(0xFFFBFAF8), Color(0xFFFFFFFF), Color(0xFFDDDAD3),
         Color(0xFFD7263D), Color(0xFF1C1C1F), Color(0xFFE4404F),
         Color(0xFF141416), Color(0xFF6F6E73), Color(0xFFB9B7B1), Color(0xFFDFDDD8),
         hesp = Color(0xFF2F5D8C), light = true, frame = "mecha"

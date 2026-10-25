@@ -2,6 +2,11 @@ name: Build EXE
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main, dev]
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -11,11 +16,14 @@ jobs:
 
       - name: Unpack newest aurora-exe zip
         run: |
+          # ветка dev: исходники лежат папкой exe/, архив не нужен
+          if [ -f exe/app/build.gradle.kts ]; then echo "sources: exe/ folder"; else
           Z=$(ls aurora-exe-v*.zip 2>/dev/null | sort -V | tail -1 || true)
           if [ -z "$Z" ]; then echo "::error::no aurora-exe-v*.zip in repo root"; exit 1; fi
           echo "Archive: $Z"
           rm -rf exe
           unzip -q "$Z" 'exe/*'
+          fi
           test -f exe/app/build.gradle.kts || { echo "::error::no exe/app/build.gradle.kts in archive"; exit 1; }
           grep -E 'versionName|applicationId' exe/app/build.gradle.kts
 
@@ -43,7 +51,21 @@ jobs:
 
       - name: Build
         working-directory: exe
-        run: gradle assembleDebug --no-daemon --stacktrace
+        run: |
+          set -o pipefail
+          gradle assembleDebug --no-daemon --stacktrace 2>&1 | tee /tmp/build.log
+
+      # Ошибки сборки — в ветку buildlog, чтобы их можно было прочитать без входа на GitHub
+      - name: Push build errors
+        if: failure()
+        run: |
+          mkdir -p /tmp/bl && cd /tmp/bl
+          grep -E "^e: |error:|What went wrong" -A3 /tmp/build.log > errors.txt || true
+          tail -150 /tmp/build.log > tail.txt
+          git init -q -b buildlog
+          git config user.name "build"; git config user.email "build@users.noreply.github.com"
+          git add -A && git commit -q -m "build errors ${GITHUB_SHA}"
+          git push -f -q "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" buildlog
 
       - uses: actions/upload-artifact@v4
         with:

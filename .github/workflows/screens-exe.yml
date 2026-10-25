@@ -1,0 +1,42 @@
+name: Screens EXE
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, dev]
+
+permissions:
+  contents: write
+
+jobs:
+  shots:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unpack newest aurora-exe zip
+        run: |
+          if [ ! -f exe/app/build.gradle.kts ]; then
+            Z=$(ls aurora-exe-v*.zip | sort -V | tail -1)
+            rm -rf exe && unzip -q "$Z" 'exe/*'
+          fi
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: 8.9 }
+      - name: Render screens
+        working-directory: exe
+        run: |
+          set -o pipefail
+          gradle :app:recordRoborazziDebug --no-daemon --stacktrace 2>&1 | tee /tmp/shots.log
+      - name: Push screenshots to branch "shots"
+        if: always()
+        run: |
+          mkdir -p /tmp/s && cp -r exe/app/build/outputs/roborazzi/. /tmp/s/ 2>/dev/null || true
+          grep -E "^e: |error:|What went wrong|FAILED|Exception" -A3 /tmp/shots.log > /tmp/s/errors.txt || true
+          tail -200 /tmp/shots.log > /tmp/s/tail.txt
+          cp -r exe/app/build/test-results /tmp/s/test-results 2>/dev/null || true
+          cd /tmp/s
+          git init -q -b shots
+          git config user.name "build"; git config user.email "build@users.noreply.github.com"
+          git add -A && git commit -q -m "shots ${GITHUB_SHA}"
+          git push -f -q "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" shots

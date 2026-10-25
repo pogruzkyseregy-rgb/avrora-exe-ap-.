@@ -17,6 +17,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -81,29 +82,44 @@ fun changeLabel(c: HesperaChange): String = when (c.kind) {
 object HesperaApi {
     private fun msgsJson(list: List<ChatMessage>, limit: Int = 60): JSONArray {
         val a = JSONArray()
-        list.takeLast(limit).forEach { a.put(JSONObject().put("role", it.role).put("content", it.content)) }
+        list.filter { it.role == "user" || it.role == "assistant" }.takeLast(limit)
+            .forEach { a.put(JSONObject().put("role", it.role).put("content", it.content)) }
         return a
     }
 
     private fun toolsJson(tools: List<String>) = JSONArray(tools)
 
-    data class Reply(val text: String, val changes: List<HesperaChange>, val trace: String)
-
-    suspend fun chat(base: String, token: String, history: List<ChatMessage>, tools: List<String>, localTime: String): Reply {
-        val body = JSONObject().put("messages", msgsJson(history)).put("tools", toolsJson(tools)).put("local_time", localTime)
-        val r = AuroraApi.post(base, "/hespera/chat", token, body)
-        return Reply(r.optString("reply"), changesFromJson(r.optJSONArray("changes")), r.optJSONArray("trace")?.toString() ?: "")
+    /** Общий чат глазами сервера: кто говорил (adonis, aurora, hespera) и что. */
+    fun groupJson(list: List<ChatMessage>, limit: Int = 60): JSONArray {
+        val a = JSONArray()
+        list.filter { it.role != "system" }.takeLast(limit).forEach {
+            a.put(JSONObject().put("speaker", if (it.role == "user") "adonis" else it.role).put("content", it.content))
+        }
+        return a
     }
 
-    data class Wake(val message: String?, val wakeMin: Int?, val changes: List<HesperaChange>, val trace: String)
+    private fun strings(a: JSONArray?): List<String> = if (a == null) emptyList() else (0 until a.length()).map { a.getString(it) }.filter { it.isNotBlank() }
 
-    suspend fun wake(base: String, token: String, history: List<ChatMessage>, tools: List<String>, localTime: String, gapMin: Long, unanswered: Int): Wake {
+    data class Reply(val text: String, val changes: List<HesperaChange>, val trace: String, val toGroup: List<String>)
+
+    suspend fun chat(base: String, token: String, history: List<ChatMessage>, group: List<ChatMessage>, tools: List<String>, localTime: String): Reply {
+        val body = JSONObject().put("messages", msgsJson(history)).put("tools", toolsJson(tools)).put("local_time", localTime)
+            .put("group", groupJson(group, 20))
+        val r = AuroraApi.post(base, "/hespera/chat", token, body)
+        return Reply(r.optString("reply"), changesFromJson(r.optJSONArray("changes")), r.optJSONArray("trace")?.toString() ?: "",
+            strings(r.optJSONArray("to_group")))
+    }
+
+    data class Wake(val message: String?, val wakeMin: Int?, val changes: List<HesperaChange>, val trace: String, val toGroup: List<String>)
+
+    suspend fun wake(base: String, token: String, history: List<ChatMessage>, group: List<ChatMessage>, tools: List<String>, localTime: String, gapMin: Long, unanswered: Int): Wake {
         val body = JSONObject().put("messages", msgsJson(history, 50)).put("tools", toolsJson(tools)).put("local_time", localTime)
-            .put("gap_minutes", gapMin).put("unanswered", unanswered)
+            .put("gap_minutes", gapMin).put("unanswered", unanswered).put("group", groupJson(group, 20))
         val r = AuroraApi.post(base, "/hespera/wake", token, body)
         val wake = if (r.has("wake_min")) r.optInt("wake_min", 0).takeIf { it > 0 } else null
         val msg = if (r.optBoolean("skip", false)) null else r.optString("message", "").trim().ifBlank { null }
-        return Wake(msg, wake, changesFromJson(r.optJSONArray("changes")), r.optJSONArray("trace")?.toString() ?: "")
+        return Wake(msg, wake, changesFromJson(r.optJSONArray("changes")), r.optJSONArray("trace")?.toString() ?: "",
+            strings(r.optJSONArray("to_group")))
     }
 
     suspend fun reflect(base: String, token: String, history: List<ChatMessage>, upto: String): List<HesperaChange> {
@@ -133,17 +149,18 @@ object HesperaApi {
         return if (b64.isBlank()) null else android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
     }
 
-    data class GroupReply(val who: String, val text: String)
+    data class GroupReply(val who: String, val text: String, val private: List<String> = emptyList())
 
-    suspend fun group(base: String, token: String, history: List<ChatMessage>, memory: String, persona: String, localTime: String): Pair<List<GroupReply>, List<HesperaChange>> {
-        val a = JSONArray()
-        history.takeLast(60).forEach {
-            a.put(JSONObject().put("speaker", if (it.role == "user") "adonis" else it.role).put("content", it.content))
-        }
-        val body = JSONObject().put("messages", a).put("memory", memory).put("persona", persona).put("local_time", localTime)
+    suspend fun group(
+        base: String, token: String, history: List<ChatMessage>, memory: String, persona: String, localTime: String,
+        auroraPrivate: List<ChatMessage>, hesperaPrivate: List<ChatMessage>, responders: List<String>
+    ): Pair<List<GroupReply>, List<HesperaChange>> {
+        val body = JSONObject().put("messages", groupJson(history)).put("memory", memory).put("persona", persona).put("local_time", localTime)
+            .put("aurora_private", msgsJson(auroraPrivate, 15)).put("hespera_private", msgsJson(hesperaPrivate, 15))
+            .put("responders", JSONArray(responders))
         val r = AuroraApi.post(base, "/group/chat", token, body)
         val replies = r.optJSONArray("replies")?.let { arr -> (0 until arr.length()).map { arr.getJSONObject(it) }
-            .map { GroupReply(it.optString("who"), it.optString("text")) } } ?: emptyList()
+            .map { GroupReply(it.optString("who"), it.optString("text"), strings(it.optJSONArray("private"))) } } ?: emptyList()
         return Pair(replies, changesFromJson(r.optJSONArray("changes")))
     }
 }
@@ -226,6 +243,94 @@ fun nowTimeLine(history: List<ChatMessage>): String {
     else timeContext(System.currentTimeMillis(), java.util.TimeZone.getDefault(), history[lastUser].time, if (lastUser > 0) history[lastUser - 1].time else 0L)
 }
 
+// ---------- общий чат: одна логика для экрана, пробуждений и маркеров ----------
+// Аврора и Геспера пишут и в личку, и в общий, как им удобнее. Память одна: в каждом запросе
+// личный чат видит последнее из общего, а общий — последнее из личного.
+
+private val GROUP_TO_RE = Regex("""\[в общий\s*:\s*([^\]]{1,1500})\]""", RegexOption.IGNORE_CASE)
+
+/** Маркер «[в общий: …]» в ответе Авроры: возвращает текст без него и то, что надо сказать в общем чате. */
+fun splitToGroup(text: String): Pair<String, List<String>> {
+    val found = GROUP_TO_RE.findAll(text).map { it.groupValues[1].trim() }.filter { it.isNotBlank() }.take(1).toList()
+    val clean = GROUP_TO_RE.replace(text, "").replace(Regex("\n{3,}"), "\n\n").trim()
+    return Pair(clean, found)
+}
+
+object GroupEngine {
+    private val mutex = kotlinx.coroutines.sync.Mutex()
+
+    /** Последнее из общего чата — Авроре в память для лички и пробуждений. */
+    fun groupBlock(ctx: Context): String {
+        val g = synchronized(HesperaStore.LOCK) { HesperaStore(ctx).group() }.filter { it.role != "system" }.takeLast(20)
+        if (g.isEmpty()) return ""
+        val names = mapOf("user" to "Адонис", WHO_AURORA to "Ты", WHO_HESPERA to "Геспера")
+        return "ОБЩИЙ ЧАТ НА ТРОИХ — последние реплики (ты там тоже была, это та же ты):\n" +
+            g.joinToString("\n") { "${names[it.role] ?: it.role}: ${it.content.take(400)}" }
+    }
+
+    private fun auroraPrivate(ctx: Context): List<ChatMessage> = ChatStore(ctx).load() + Inbox(ctx).peek()
+
+    /**
+     * Один круг общего чата: отвечают те, кому можно (responders, пусто — обе), ответы ложатся в общий чат,
+     * а «[лично: …]» — в их личку. Возвращает ответы.
+     */
+    suspend fun converse(ctx: Context, responders: List<String> = emptyList()): List<HesperaApi.GroupReply> = mutex.withLock {
+        val prefs = AppPrefs(ctx)
+        val store = HesperaStore(ctx)
+        val history = synchronized(HesperaStore.LOCK) { store.group() }
+        val recent = history.filter { it.role == "user" }.takeLast(3).joinToString(" ") { it.content }
+        val mem = MemoryContext.build(MemoryStore(ctx).load(), recent)
+        val (replies, changes) = HesperaApi.group(
+            prefs.serverUrl, prefs.token, history, mem, prefs.loadPersona().compile(), nowTimeLine(history),
+            auroraPrivate(ctx), synchronized(HesperaStore.LOCK) { store.chat() }, responders
+        )
+        val now = System.currentTimeMillis()
+        synchronized(HesperaStore.LOCK) {
+            val g = store.group().toMutableList()
+            replies.forEachIndexed { i, r ->
+                if (r.text.isNotBlank()) {
+                    val tr = if (r.who == WHO_HESPERA && i == replies.indexOfLast { it.who == WHO_HESPERA }) encodeHesperaTrace("", changes) else ""
+                    g.add(ChatMessage(r.who, r.text, now + i, trace = tr))
+                }
+            }
+            if (replies.none { it.text.isNotBlank() } && responders.isEmpty()) g.add(ChatMessage("system", "обе промолчали", now))
+            store.saveGroup(g)
+        }
+        replies.forEach { r -> r.private.forEach { toPrivate(ctx, r.who, it) } }
+        HesperaBus.signal()
+        replies
+    }
+
+    /** Аврора или Геспера сама пишет в общий чат. Вторая может ответить — один раз, без бесконечной переписки ИИ с ИИ. */
+    suspend fun autoPost(ctx: Context, who: String, text: String, notify: Boolean = true) {
+        val store = HesperaStore(ctx)
+        synchronized(HesperaStore.LOCK) { store.saveGroup(store.group() + ChatMessage(who, text, auto = true)) }
+        HesperaBus.signal()
+        if (notify) notifyGroup(ctx, who, text)
+        val other = if (who == WHO_AURORA) WHO_HESPERA else WHO_AURORA
+        val replies = runCatching { converse(ctx, listOf(other)) }.getOrDefault(emptyList())
+        replies.filter { it.text.isNotBlank() }.forEach { if (notify) notifyGroup(ctx, it.who, it.text) }
+    }
+
+    /** Сообщение в личку от её имени (из общего чата, маркером «[лично: …]»). */
+    fun toPrivate(ctx: Context, who: String, text: String) {
+        if (who == WHO_AURORA) {
+            Inbox(ctx).add(ChatMessage("assistant", text, auto = true))
+            InboxBus.signal()
+            AuroraNotifications.show(ctx, text)
+        } else {
+            synchronized(HesperaStore.LOCK) { HesperaStore(ctx).append(ChatMessage("assistant", text, auto = true)) }
+            HesperaBus.signal()
+            HesperaNotifications.show(ctx, text)
+        }
+    }
+
+    private fun notifyGroup(ctx: Context, who: String, text: String) {
+        val name = if (who == WHO_AURORA) "Аврора" else "Геспера"
+        HesperaNotifications.show(ctx, "$name в общем чате: $text")
+    }
+}
+
 // ---------- пробуждения: она просыпается сама, из любопытства ----------
 
 class HesperaWakeWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
@@ -269,9 +374,11 @@ object HesperaEngine {
         val history = synchronized(HesperaStore.LOCK) { store.chat() }
         val gap = ((now - (history.lastOrNull()?.time ?: now)) / 60_000L).coerceAtLeast(0)
         val handReady = prefs.handConfigured && !prefs.handOff
-        val w = HesperaApi.wake(prefs.serverUrl, prefs.token, history, store.tools(handReady), nowTimeLine(history), gap, store.unanswered)
+        val group = synchronized(HesperaStore.LOCK) { store.group() }
+        val w = HesperaApi.wake(prefs.serverUrl, prefs.token, history, group, store.tools(handReady), nowTimeLine(history), gap, store.unanswered)
         store.nextWake = now + (w.wakeMin ?: DEFAULT_WAKE_MIN) * 60_000L
-        val msg = w.message ?: return null.also { HesperaBus.signal() }
+        w.toGroup.forEach { GroupEngine.autoPost(ctx, WHO_HESPERA, it) }
+        val msg = w.message ?: return (if (w.toGroup.isNotEmpty()) "в общий чат: " + w.toGroup.first() else null).also { HesperaBus.signal() }
         synchronized(HesperaStore.LOCK) {
             store.append(ChatMessage("assistant", msg, auto = true, trace = encodeHesperaTrace(w.trace, w.changes)))
         }
@@ -383,7 +490,15 @@ class HesperaViewModel(app: Application) : AndroidViewModel(app) {
         HesperaScheduler.apply(ctx, on)
     }
 
+    fun reloadGroup() {
+        val g = synchronized(HesperaStore.LOCK) { store.group() }
+        if (g.size != group.size || g.lastOrNull()?.time != group.lastOrNull()?.time) {
+            group.clear(); group.addAll(g)
+        }
+    }
+
     fun reload() {
+        reloadGroup()
         val c = synchronized(HesperaStore.LOCK) { store.chat() }
         if (c.size != chat.size || c.lastOrNull()?.time != chat.lastOrNull()?.time) {
             chat.clear(); chat.addAll(c)
@@ -427,9 +542,15 @@ class HesperaViewModel(app: Application) : AndroidViewModel(app) {
         val history = chat.toList()
         viewModelScope.launch {
             try {
-                val r = HesperaApi.chat(base(), token(), history, tools(), nowTimeLine(history))
-                chat.add(ChatMessage("assistant", r.text, trace = encodeHesperaTrace(r.trace, r.changes)))
+                val g = synchronized(HesperaStore.LOCK) { store.group() }
+                val r = HesperaApi.chat(base(), token(), history, g, tools(), nowTimeLine(history))
+                if (r.text.isNotBlank() || r.toGroup.isEmpty()) {
+                    chat.add(ChatMessage("assistant", r.text.ifBlank { "…" }, trace = encodeHesperaTrace(r.trace, r.changes)))
+                } else {
+                    chat.add(ChatMessage("system", "Геспера ответила в общем чате", trace = encodeHesperaTrace(r.trace, r.changes)))
+                }
                 synchronized(HesperaStore.LOCK) { store.saveChat(chat.toList()) }
+                r.toGroup.forEach { t -> launch { runCatching { GroupEngine.autoPost(ctx, WHO_HESPERA, t, notify = false) }; reloadGroup() } }
                 if (r.changes.isNotEmpty()) refreshProfile()
                 maybeReflect()
             } catch (e: Exception) {
@@ -467,19 +588,12 @@ class HesperaViewModel(app: Application) : AndroidViewModel(app) {
         if (token().isBlank()) { error = "Укажи токен в настройках"; return }
         groupSending = true
         error = null
-        val history = group.toList()
-        val recent = history.filter { it.role == "user" }.takeLast(3).joinToString(" ") { it.content }
-        val (mem, persona) = aurora.auroraForGroup(recent)
         viewModelScope.launch {
             try {
-                val (replies, changes) = HesperaApi.group(base(), token(), history, mem, persona, nowTimeLine(history))
-                replies.forEachIndexed { i, r ->
-                    val tr = if (r.who == WHO_HESPERA && i == replies.indexOfLast { it.who == WHO_HESPERA }) encodeHesperaTrace("", changes) else ""
-                    group.add(ChatMessage(r.who, r.text, trace = tr))
-                }
-                if (replies.isEmpty()) group.add(ChatMessage("system", "обе промолчали"))
-                synchronized(HesperaStore.LOCK) { store.saveGroup(group.toList()) }
-                if (changes.isNotEmpty()) refreshProfile()
+                GroupEngine.converse(ctx)
+                reloadGroup()
+                reload()
+                refreshProfile()
                 maybeReflectGroup()
             } catch (e: Exception) {
                 error = e.message ?: "Нет связи"

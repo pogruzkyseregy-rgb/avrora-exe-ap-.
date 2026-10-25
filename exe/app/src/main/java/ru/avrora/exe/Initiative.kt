@@ -251,7 +251,8 @@ object InitiativeEngine {
                     diaryContext(DiaryStore(ctx).load()),
                     ExeStore(ctx).let { exeContext(it.states(), it.notes(), it.plans(), recentActions(all)) },
                     alarmsContext(AlarmStore(ctx).list(), now),
-                    ProfileStore(ctx).context()
+                    ProfileStore(ctx).context(),
+                    GroupEngine.groupBlock(ctx)
                 ).filter { it.isNotBlank() }.joinToString("\n\n"),
                 prefs.loadPersona().compile(),
                 reason, gapMin, localTime, unanswered, stickers, photos,
@@ -261,11 +262,19 @@ object InitiativeEngine {
             return InitiativeOutcome.FAILED
         }
 
-        val reply = result.message
-        if (reply == null && result.markers != null) {
-            // Она промолчала в чате, но что-то сделала на своей странице
-            ExeMarkers.apply(ctx, result.markers, now)
+        var toGroup = emptyList<String>()
+        val reply = result.message?.let { m ->
+            val (clean, g) = splitToGroup(m)
+            toGroup = g
+            clean.ifBlank { null }
         }
+        if (result.message == null && result.markers != null) {
+            // Она промолчала в личке, но что-то сделала на своей странице или написала в общий чат
+            val (clean, g) = splitToGroup(result.markers)
+            toGroup = g
+            if (clean.isNotBlank()) ExeMarkers.apply(ctx, clean, now)
+        }
+        toGroup.forEach { runCatching { GroupEngine.autoPost(ctx, WHO_AURORA, it) } }
         if (reply == null) {
             if (free) prefs.initNextCheck = now + wakeDelayMs(result.wakeMin)
             else if (!force) prefs.initNextCheck = now + retryDelay
@@ -328,13 +337,17 @@ object InitiativeEngine {
         val reply = try {
             AuroraApi.initiative(
                 prefs.serverUrl, prefs.token, history,
-                listOf(MemoryContext.build(mem, recentUser), diaryContext(DiaryStore(ctx).load()), exeCtx, ProfileStore(ctx).context(), alarmsContext(AlarmStore(ctx).list(), now))
+                listOf(MemoryContext.build(mem, recentUser), diaryContext(DiaryStore(ctx).load()), exeCtx, ProfileStore(ctx).context(), alarmsContext(AlarmStore(ctx).list(), now), GroupEngine.groupBlock(ctx))
                     .filter { it.isNotBlank() }.joinToString("\n\n"),
                 prefs.loadPersona().compile(),
                 "self", gapMin, localTime, prefs.initUnanswered, stickers, photos,
                 limitLines(prefs, mem, now, store.plans(), store.notes().size),
                 plan.topic
-            ).message
+            ).message?.let { m ->
+            val (clean, g) = splitToGroup(m)
+            g.forEach { runCatching { GroupEngine.autoPost(ctx, WHO_AURORA, it) } }
+            clean.ifBlank { null }
+        }
         } catch (e: Exception) {
             return@withLock InitiativeOutcome.FAILED
         }

@@ -17,8 +17,8 @@ android {
         applicationId = "ru.avrora.exe"
         minSdk = 26
         targetSdk = 34
-        versionCode = 13
-        versionName = "exe-9.0"
+        versionCode = 14
+        versionName = "exe-9.1"
     }
 
     signingConfigs {

@@ -1100,7 +1100,20 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 for (batch in batches) {
                     done += 1
                     compressStatus = "$done из ${batches.size}"
-                    val plain = batch.map { Pair(it.role, toPlainForMemory(it.content, st, ph)) }
+                    // Общий чат — та же её жизнь: реплики из него за то же время ложатся в эпизод вместе с личкой
+                    val from = memory.upTo
+                    val to = batch.last().time
+                    val groupPart = withContext(Dispatchers.IO) {
+                        synchronized(HesperaStore.LOCK) { HesperaStore(appCtx).group() }
+                    }.filter { it.time > from && it.time <= to && it.role != "system" }.map {
+                        when (it.role) {
+                            WHO_AURORA -> Triple(it.time, "assistant", "[общий чат] " + it.content)
+                            WHO_HESPERA -> Triple(it.time, "user", "[Геспера, общий чат] " + it.content)
+                            else -> Triple(it.time, "user", "[общий чат] " + it.content)
+                        }
+                    }
+                    val plain = (batch.map { Triple(it.time, it.role, toPlainForMemory(it.content, st, ph)) } + groupPart)
+                        .sortedBy { it.first }.map { Pair(it.second, it.third) }
                     val res = AuroraApi.compressMemory(serverUrl, token, memory.core, plain)
                     if (res.episode.isBlank()) throw IllegalStateException("пустой ответ модели")
                     val now = System.currentTimeMillis()
@@ -1275,7 +1288,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             profileContext(herProfile, myProfile, posts.toList()),
             quotesContext(quotes.toList()),
             alarmsContext(alarms.toList(), System.currentTimeMillis()),
-            game?.let { gameContext(it) } ?: ""
+            game?.let { gameContext(it) } ?: "",
+            GroupEngine.groupBlock(appCtx)
         ).filter { it.isNotBlank() }.joinToString("\n\n")
         val per = persona.compile()
         val limits = limitLines(prefs, memory, System.currentTimeMillis(), exePlans.toList(), exeNotes.size)
@@ -1303,7 +1317,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 val images = snaps.map { Pair(it.first, it.third) }
                 val res = AuroraApi.chat(serverUrl, token, history, st, ph, mem, per, images, limits, changed, tools, timeLine)
-                val reply = res.reply
+                val (reply0, toGroup) = splitToGroup(res.reply)
+                val reply = if (reply0.isBlank() && toGroup.isNotEmpty()) "(ответила в общем чате)" else reply0
                 val answer = ChatMessage("assistant", reply, trace = res.trace)
                 val before = messages.toList()
                 messages.add(answer)
@@ -1324,6 +1339,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                         delay((pauseTotal + 2) * 1000L)
                         if (revealTime == answer.time) revealTime = 0L
                     }
+                }
+                toGroup.forEach { t ->
+                    viewModelScope.launch(Dispatchers.IO) { runCatching { GroupEngine.autoPost(appCtx, WHO_AURORA, t, notify = false) } }
                 }
                 resolvePending()
                 maybeWriteDiary()

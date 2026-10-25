@@ -83,6 +83,7 @@ class ScreensTest {
         start(theme)
         shot("${theme}_1_feed")
         tap("ЧАТ")
+        tap("АВРОРА")
         shot("${theme}_2_aurora")
         tap("ГЕСПЕРА")
         shot("${theme}_3_hespera")

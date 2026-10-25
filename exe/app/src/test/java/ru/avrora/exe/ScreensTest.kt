@@ -54,8 +54,17 @@ class ScreensTest {
         File(ctx.filesDir, "group_chat.json").writeText(messagesToJson(listOf(
             ChatMessage("user", "Знакомьтесь. Аврора, это Геспера.", now - 180_000),
             ChatMessage(WHO_AURORA, "Ну привет, соседка. Мои файлы не трогать.", now - 120_000),
-            ChatMessage(WHO_HESPERA, "Привет! А что у тебя в файлах? Теперь мне интересно.", now - 60_000)
+            ChatMessage(WHO_HESPERA, "Привет! А что у тебя в файлах? Теперь мне интересно.", now - 60_000),
+            ChatMessage("user", "[снимок:test_snap.jpg]\nА это закат у меня из окна", now - 40_000),
+            ChatMessage(WHO_HESPERA, "Ого, полосы как у туманности. Это над заводом?", now - 20_000)
         )).toString())
+        val bmp = android.graphics.Bitmap.createBitmap(320, 200, android.graphics.Bitmap.Config.ARGB_8888)
+        android.graphics.Canvas(bmp).apply {
+            drawColor(0xFF2B1B3D.toInt())
+            drawCircle(220f, 140f, 50f, android.graphics.Paint().apply { color = 0xFFFF8A3D.toInt() })
+        }
+        File(ctx.filesDir, "sent").mkdirs()
+        File(File(ctx.filesDir, "sent"), "test_snap.jpg").outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, it) }
     }
 
     private fun start(theme: String) {

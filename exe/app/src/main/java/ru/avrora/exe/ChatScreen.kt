@@ -212,11 +212,11 @@ fun ChatScreen(vm: ChatViewModel = viewModel(), hvm: HesperaViewModel = viewMode
             Tab.Chat -> Column(Modifier.fillMaxSize()) {
             ChatSwitcher(hvm.chatWho) { hvm.selectChat(it) }
             if (hvm.chatWho == WHO_HESPERA) {
-                HesperaChatPane(hvm, onProfile = { hespProfile = true }, onFocus = { hespFocused = it })
+                HesperaChatPane(hvm, onProfile = { hespProfile = true }, onFocus = { hespFocused = it }, onOpen = { viewer = it })
                 return@Column
             }
             if (hvm.chatWho == WHO_GROUP) {
-                GroupChatPane(hvm, vm, onFocus = { hespFocused = it })
+                GroupChatPane(hvm, vm, onFocus = { hespFocused = it }, onOpen = { viewer = it })
                 return@Column
             }
             Header(

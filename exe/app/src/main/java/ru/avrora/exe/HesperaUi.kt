@@ -1,6 +1,16 @@
 package ru.avrora.exe
 
 import android.graphics.BitmapFactory
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.ui.platform.LocalContext
+import coil.compose.AsyncImage
+import java.io.File
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -135,7 +145,7 @@ private fun HespHeader(hvm: HesperaViewModel, onProfile: () -> Unit) {
 
 /** Пузырь сообщения в чатах Гесперы. who: user, hespera, aurora, system. */
 @Composable
-private fun HBubble(m: ChatMessage, who: String, showName: Boolean, hespAvatar: ByteArray?) {
+private fun HBubble(m: ChatMessage, who: String, showName: Boolean, hespAvatar: ByteArray?, onOpen: (Any) -> Unit = {}) {
     if (who == "system") {
         Text("· ${m.content}", color = TextDim, fontSize = 12.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(start = 6.dp))
         return
@@ -168,7 +178,21 @@ private fun HBubble(m: ChatMessage, who: String, showName: Boolean, hespAvatar: 
                     .border(1.dp, accent.copy(alpha = 0.5f), shape)
                     .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
-                Text(m.content, color = TextMain, fontSize = 15.sp, lineHeight = 21.sp)
+                val snaps = remember(m.content) { parseParts(m.content).filterIsInstance<Part.Snap>() }
+                if (snaps.isNotEmpty()) {
+                    val dir = File(LocalContext.current.filesDir, "sent")
+                    snaps.forEach { p ->
+                        val f = File(dir, p.file)
+                        val aspect = remember(f) { imageAspect(f) }
+                        AsyncImage(
+                            model = f, contentDescription = "Фото", contentScale = ContentScale.Crop,
+                            modifier = Modifier.padding(bottom = 4.dp).width(230.dp).aspectRatio(aspect.coerceIn(0.5f, 2f))
+                                .clip(panelShape()).border(1.dp, Edge, panelShape()).clickable { onOpen(f) }
+                        )
+                    }
+                }
+                val text = if (snaps.isEmpty()) m.content else TAG_RE.replace(m.content, "").trim()
+                if (text.isNotEmpty()) Text(text, color = TextMain, fontSize = 15.sp, lineHeight = 21.sp)
                 Text(if (m.auto) "сама · " + hTime.format(Date(m.time)) else hTime.format(Date(m.time)), color = TextDim, fontSize = 10.sp,
                     fontFamily = FontFamily.Monospace, modifier = Modifier.align(Alignment.End))
             }
@@ -183,13 +207,27 @@ private fun HBubble(m: ChatMessage, who: String, showName: Boolean, hespAvatar: 
 }
 
 @Composable
-private fun HInput(sending: Boolean, placeholder: String, accent: Color, onFocus: (Boolean) -> Unit, onSend: (String) -> Unit) {
+private fun HInput(sending: Boolean, placeholder: String, accent: Color, onFocus: (Boolean) -> Unit, onSend: (String, Uri?) -> Unit) {
     var input by rememberSaveable(placeholder) { mutableStateOf("") }
-    val can = !sending && input.isNotBlank()
+    var photo by remember(placeholder) { mutableStateOf<Uri?>(null) }
+    val pick = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> if (uri != null) photo = uri }
+    val can = !sending && (input.isNotBlank() || photo != null)
+    photo?.let { u ->
+        Row(Modifier.fillMaxWidth().background(Panel).padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            AsyncImage(model = u, contentDescription = null, contentScale = ContentScale.Crop,
+                modifier = Modifier.size(56.dp).clip(panelShape()))
+            Spacer(Modifier.width(10.dp))
+            Text("Фото прикреплено. Можно добавить подпись.", color = TextDim, fontSize = 13.sp, modifier = Modifier.weight(1f))
+            IconButton(onClick = { photo = null }) { Icon(Icons.Default.Close, contentDescription = "Убрать фото", tint = TextDim) }
+        }
+    }
     Row(
-        Modifier.fillMaxWidth().background(Panel).padding(horizontal = 8.dp, vertical = 6.dp),
+        Modifier.fillMaxWidth().background(Panel).padding(horizontal = 4.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        IconButton(onClick = { pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) {
+            Icon(Icons.Default.Add, contentDescription = "Отправить фото", tint = TextDim)
+        }
         OutlinedTextField(
             value = input, onValueChange = { input = it },
             modifier = Modifier.weight(1f).onFocusChanged { onFocus(it.isFocused) },
@@ -201,7 +239,7 @@ private fun HInput(sending: Boolean, placeholder: String, accent: Color, onFocus
         Box(
             Modifier.size(46.dp).clip(if (AppTheme.current.frame == "soft") CircleShape else panelShape())
                 .background(if (can) accent else Edge)
-                .clickable(enabled = can) { onSend(input); input = "" },
+                .clickable(enabled = can) { onSend(input, photo); input = ""; photo = null },
             contentAlignment = Alignment.Center
         ) {
             Icon(Icons.Default.Send, contentDescription = "Отправить", tint = if (can) (if (AppTheme.current.light) Color.White else Night) else TextDim, modifier = Modifier.size(20.dp))
@@ -221,7 +259,7 @@ private fun ErrorBar(err: String?, onRetry: () -> Unit, onClose: () -> Unit) {
 
 /** Чат с Гесперой. */
 @Composable
-fun HesperaChatPane(hvm: HesperaViewModel, onProfile: () -> Unit, onFocus: (Boolean) -> Unit) {
+fun HesperaChatPane(hvm: HesperaViewModel, onProfile: () -> Unit, onFocus: (Boolean) -> Unit, onOpen: (Any) -> Unit = {}) {
     val list = rememberLazyListState()
     LaunchedEffect(hvm.chat.size, hvm.sending) {
         val n = hvm.chat.size + if (hvm.sending) 1 else 0
@@ -237,12 +275,12 @@ fun HesperaChatPane(hvm: HesperaViewModel, onProfile: () -> Unit, onFocus: (Bool
             if (hvm.chat.isEmpty()) item { HespEmpty(hvm) }
             itemsIndexed(hvm.chat) { i, m ->
                 val who = if (m.role == "user") "user" else WHO_HESPERA
-                HBubble(m, who, showName = false, hespAvatar = hvm.avatar)
+                HBubble(m, who, showName = false, hespAvatar = hvm.avatar, onOpen = onOpen)
             }
             if (hvm.sending) item { Text("Геспера печатает…", color = TextDim, fontSize = 13.sp, modifier = Modifier.padding(start = 38.dp)) }
         }
         ErrorBar(hvm.error, onRetry = hvm::retry, onClose = hvm::clearError)
-        HInput(hvm.sending, "Написать Геспере", HespColor, onFocus) { hvm.send(it) }
+        HInput(hvm.sending, "Написать Геспере", HespColor, onFocus) { t, ph -> hvm.send(t, ph) }
     }
 }
 
@@ -258,7 +296,7 @@ private fun HespEmpty(hvm: HesperaViewModel) {
 
 /** Общий чат: Адонис, Аврора и Геспера. */
 @Composable
-fun GroupChatPane(hvm: HesperaViewModel, vm: ChatViewModel, onFocus: (Boolean) -> Unit) {
+fun GroupChatPane(hvm: HesperaViewModel, vm: ChatViewModel, onFocus: (Boolean) -> Unit, onOpen: (Any) -> Unit = {}) {
     val list = rememberLazyListState()
     LaunchedEffect(hvm.group.size, hvm.groupSending) {
         val n = hvm.group.size + if (hvm.groupSending) 1 else 0
@@ -286,12 +324,12 @@ fun GroupChatPane(hvm: HesperaViewModel, vm: ChatViewModel, onFocus: (Boolean) -
             }
             itemsIndexed(hvm.group) { i, m ->
                 val prev = hvm.group.getOrNull(i - 1)?.role
-                HBubble(m, m.role, showName = prev != m.role, hespAvatar = hvm.avatar)
+                HBubble(m, m.role, showName = prev != m.role, hespAvatar = hvm.avatar, onOpen = onOpen)
             }
             if (hvm.groupSending) item { Text("пишут…", color = TextDim, fontSize = 13.sp, modifier = Modifier.padding(start = 38.dp)) }
         }
         ErrorBar(hvm.error, onRetry = { hvm.retryGroup(vm) }, onClose = hvm::clearError)
-        HInput(hvm.groupSending, "Написать обеим", Violet, onFocus) { hvm.sendGroup(it, vm) }
+        HInput(hvm.groupSending, "Написать обеим", Violet, onFocus) { t, ph -> hvm.sendGroup(t, vm, ph) }
     }
 }
 

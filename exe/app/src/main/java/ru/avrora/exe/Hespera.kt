@@ -2,6 +2,7 @@ package ru.avrora.exe
 
 import android.app.Application
 import android.content.Context
+import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -16,7 +17,9 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
@@ -80,20 +83,45 @@ fun changeLabel(c: HesperaChange): String = when (c.kind) {
 // ---------- сервер ----------
 
 object HesperaApi {
-    private fun msgsJson(list: List<ChatMessage>, limit: Int = 60): JSONArray {
+    /** Метки вложений Адониса — словами для модели; приложенные фото помечены как видимые. */
+    private fun said(m: ChatMessage, attached: Set<String> = emptySet()): String =
+        if (m.role == "user") describeForModel(m.content, emptyList(), emptyList(), attached) else m.content
+
+    private fun msgsJson(list: List<ChatMessage>, limit: Int = 60, attached: Set<String> = emptySet()): JSONArray {
         val a = JSONArray()
         list.filter { it.role == "user" || it.role == "assistant" }.takeLast(limit)
-            .forEach { a.put(JSONObject().put("role", it.role).put("content", it.content)) }
+            .forEach { a.put(JSONObject().put("role", it.role).put("content", said(it, attached))) }
+        return a
+    }
+
+    /** Последние фото Адониса (не больше двух, из последних шести сообщений): позиция в отправленном списке и base64. */
+    private suspend fun snapsFor(ctx: Context, sent: List<ChatMessage>): List<Triple<Int, String, String>> = withContext(Dispatchers.IO) {
+        val dir = File(ctx.filesDir, "sent")
+        val out = ArrayList<Triple<Int, String, String>>()
+        for (i in sent.indices.reversed()) {
+            if (i < sent.size - 6 || out.size >= 2) break
+            val m = sent[i]
+            if (m.role != "user") continue
+            val snap = parseParts(m.content).filterIsInstance<Part.Snap>().firstOrNull() ?: continue
+            val b64 = encodeForModel(File(dir, snap.file)) ?: continue
+            out.add(Triple(i, snap.file, b64))
+        }
+        out
+    }
+
+    private fun imagesJson(snaps: List<Triple<Int, String, String>>): JSONArray {
+        val a = JSONArray()
+        snaps.forEach { a.put(JSONObject().put("i", it.first).put("data", it.third)) }
         return a
     }
 
     private fun toolsJson(tools: List<String>) = JSONArray(tools)
 
     /** Общий чат глазами сервера: кто говорил (adonis, aurora, hespera) и что. */
-    fun groupJson(list: List<ChatMessage>, limit: Int = 60): JSONArray {
+    fun groupJson(list: List<ChatMessage>, limit: Int = 60, attached: Set<String> = emptySet()): JSONArray {
         val a = JSONArray()
         list.filter { it.role != "system" }.takeLast(limit).forEach {
-            a.put(JSONObject().put("speaker", if (it.role == "user") "adonis" else it.role).put("content", it.content))
+            a.put(JSONObject().put("speaker", if (it.role == "user") "adonis" else it.role).put("content", said(it, attached)))
         }
         return a
     }
@@ -102,8 +130,11 @@ object HesperaApi {
 
     data class Reply(val text: String, val changes: List<HesperaChange>, val trace: String, val toGroup: List<String>)
 
-    suspend fun chat(base: String, token: String, history: List<ChatMessage>, group: List<ChatMessage>, tools: List<String>, localTime: String): Reply {
-        val body = JSONObject().put("messages", msgsJson(history)).put("tools", toolsJson(tools)).put("local_time", localTime)
+    suspend fun chat(ctx: Context, base: String, token: String, history: List<ChatMessage>, group: List<ChatMessage>, tools: List<String>, localTime: String): Reply {
+        val sent = history.filter { it.role == "user" || it.role == "assistant" }.takeLast(60)
+        val snaps = snapsFor(ctx, sent)
+        val body = JSONObject().put("messages", msgsJson(sent, attached = snaps.map { it.second }.toSet()))
+            .put("images", imagesJson(snaps)).put("tools", toolsJson(tools)).put("local_time", localTime)
             .put("group", groupJson(group, 20))
         val r = AuroraApi.post(base, "/hespera/chat", token, body)
         return Reply(r.optString("reply"), changesFromJson(r.optJSONArray("changes")), r.optJSONArray("trace")?.toString() ?: "",
@@ -152,10 +183,14 @@ object HesperaApi {
     data class GroupReply(val who: String, val text: String, val private: List<String> = emptyList())
 
     suspend fun group(
-        base: String, token: String, history: List<ChatMessage>, memory: String, persona: String, localTime: String,
+        ctx: Context, base: String, token: String, history: List<ChatMessage>, memory: String, persona: String, localTime: String,
         auroraPrivate: List<ChatMessage>, hesperaPrivate: List<ChatMessage>, responders: List<String>
     ): Pair<List<GroupReply>, List<HesperaChange>> {
-        val body = JSONObject().put("messages", groupJson(history)).put("memory", memory).put("persona", persona).put("local_time", localTime)
+        val sent = history.filter { it.role != "system" }.takeLast(60)
+        val snaps = snapsFor(ctx, sent)
+        val body = JSONObject().put("messages", groupJson(sent, attached = snaps.map { it.second }.toSet()))
+            .put("images", imagesJson(snaps))
+            .put("memory", memory).put("persona", persona).put("local_time", localTime)
             .put("aurora_private", msgsJson(auroraPrivate, 15)).put("hespera_private", msgsJson(hesperaPrivate, 15))
             .put("responders", JSONArray(responders))
         val r = AuroraApi.post(base, "/group/chat", token, body)
@@ -265,7 +300,7 @@ object GroupEngine {
         if (g.isEmpty()) return ""
         val names = mapOf("user" to "Адонис", WHO_AURORA to "Ты", WHO_HESPERA to "Геспера")
         return "ОБЩИЙ ЧАТ НА ТРОИХ — последние реплики (ты там тоже была, это та же ты):\n" +
-            g.joinToString("\n") { "${names[it.role] ?: it.role}: ${it.content.take(400)}" }
+            g.joinToString("\n") { "${names[it.role] ?: it.role}: ${TAG_RE.replace(it.content, "[фото]").take(400)}" }
     }
 
     private fun auroraPrivate(ctx: Context): List<ChatMessage> = ChatStore(ctx).load() + Inbox(ctx).peek()
@@ -281,7 +316,7 @@ object GroupEngine {
         val recent = history.filter { it.role == "user" }.takeLast(3).joinToString(" ") { it.content }
         val mem = MemoryContext.build(MemoryStore(ctx).load(), recent)
         val (replies, changes) = HesperaApi.group(
-            prefs.serverUrl, prefs.token, history, mem, prefs.loadPersona().compile(), nowTimeLine(history),
+            ctx, prefs.serverUrl, prefs.token, history, mem, prefs.loadPersona().compile(), nowTimeLine(history),
             auroraPrivate(ctx), synchronized(HesperaStore.LOCK) { store.chat() }, responders
         )
         val now = System.currentTimeMillis()
@@ -523,14 +558,28 @@ class HesperaViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun send(text: String) {
+    /** Фото из галереи кладётся туда же, где фото для Авроры; в сообщении — метка [снимок:файл] и подпись. */
+    private suspend fun withSnap(text: String, photo: Uri?): String? {
         val t = text.trim()
-        if (t.isEmpty() || sending) return
-        val m = ChatMessage("user", t)
-        chat.add(m)
-        store.unanswered = 0
-        synchronized(HesperaStore.LOCK) { store.saveChat(chat.toList()) }
-        ask()
+        if (photo == null) return t.ifEmpty { null }
+        val name = try { withContext(Dispatchers.IO) { Library(ctx).saveSnap(photo) } } catch (e: Exception) {
+            error = "Не удалось открыть фото"; return null
+        }
+        return if (t.isEmpty()) "[снимок:$name]" else "[снимок:$name]\n$t"
+    }
+
+    fun send(text: String, photo: Uri? = null) {
+        if (sending || (text.isBlank() && photo == null)) return
+        sending = true
+        viewModelScope.launch {
+            val content = withSnap(text, photo)
+            sending = false
+            if (content == null) return@launch
+            chat.add(ChatMessage("user", content))
+            store.unanswered = 0
+            synchronized(HesperaStore.LOCK) { store.saveChat(chat.toList()) }
+            ask()
+        }
     }
 
     fun retry() { if (!sending && chat.lastOrNull()?.role == "user") ask() }
@@ -543,7 +592,7 @@ class HesperaViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             try {
                 val g = synchronized(HesperaStore.LOCK) { store.group() }
-                val r = HesperaApi.chat(base(), token(), history, g, tools(), nowTimeLine(history))
+                val r = HesperaApi.chat(ctx, base(), token(), history, g, tools(), nowTimeLine(history))
                 if (r.text.isNotBlank() || r.toGroup.isEmpty()) {
                     chat.add(ChatMessage("assistant", r.text.ifBlank { "…" }, trace = encodeHesperaTrace(r.trace, r.changes)))
                 } else {
@@ -574,12 +623,17 @@ class HesperaViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun sendGroup(text: String, aurora: ChatViewModel) {
-        val t = text.trim()
-        if (t.isEmpty() || groupSending) return
-        group.add(ChatMessage("user", t))
-        synchronized(HesperaStore.LOCK) { store.saveGroup(group.toList()) }
-        askGroup(aurora)
+    fun sendGroup(text: String, aurora: ChatViewModel, photo: Uri? = null) {
+        if (groupSending || (text.isBlank() && photo == null)) return
+        groupSending = true
+        viewModelScope.launch {
+            val content = withSnap(text, photo)
+            groupSending = false
+            if (content == null) return@launch
+            group.add(ChatMessage("user", content))
+            synchronized(HesperaStore.LOCK) { store.saveGroup(group.toList()) }
+            askGroup(aurora)
+        }
     }
 
     fun retryGroup(aurora: ChatViewModel) { if (!groupSending && group.lastOrNull()?.role == "user") askGroup(aurora) }

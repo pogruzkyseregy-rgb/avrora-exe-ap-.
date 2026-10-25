@@ -1107,9 +1107,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                         synchronized(HesperaStore.LOCK) { HesperaStore(appCtx).group() }
                     }.filter { it.time > from && it.time <= to && it.role != "system" }.map {
                         when (it.role) {
-                            WHO_AURORA -> Triple(it.time, "assistant", "[общий чат] " + it.content)
-                            WHO_HESPERA -> Triple(it.time, "user", "[Геспера, общий чат] " + it.content)
-                            else -> Triple(it.time, "user", "[общий чат] " + it.content)
+                            WHO_AURORA -> Triple(it.time, "assistant", "[общий чат] " + toPlainForMemory(it.content, st, ph))
+                            WHO_HESPERA -> Triple(it.time, "user", "[Геспера, общий чат] " + toPlainForMemory(it.content, st, ph))
+                            else -> Triple(it.time, "user", "[общий чат] " + toPlainForMemory(it.content, st, ph))
                         }
                     }
                     val plain = (batch.map { Triple(it.time, it.role, toPlainForMemory(it.content, st, ph)) } + groupPart)

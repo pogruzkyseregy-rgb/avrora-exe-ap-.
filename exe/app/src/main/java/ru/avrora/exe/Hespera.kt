@@ -501,6 +501,8 @@ class HesperaViewModel(app: Application) : AndroidViewModel(app) {
     var toolHand by mutableStateOf(store.toolHand)
         private set
     var wakeOn by mutableStateOf(store.wakeOn)
+    /** Когда она назначила себе проснуться. */
+    val nextWakeAt: Long get() = store.nextWake
         private set
 
     init {

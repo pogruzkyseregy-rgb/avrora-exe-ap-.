@@ -1,6 +1,12 @@
 package ru.avrora.exe
 
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -286,35 +292,168 @@ fun FeedScreen(vm: ChatViewModel, onGear: () -> Unit) {
 }
 
 @Composable
-fun ProfileTabScreen(vm: ChatViewModel, onGear: () -> Unit) {
-    var tab by remember { mutableStateOf(0) }   // 0 Аврора, 1 я
+fun ProfileTabScreen(vm: ChatViewModel, hvm: HesperaViewModel, onGear: () -> Unit) {
+    var tab by rememberSaveable { mutableStateOf(0) }   // 0 Аврора, 1 Геспера, 2 я
     TabPage("ПРОФИЛЬ", onGear) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("Аврора", "Я").forEachIndexed { i, label ->
-                val on = tab == i
-                Box(
-                    Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(if (on) BubbleUser else Panel)
-                        .border(1.dp, if (on) Violet.copy(alpha = 0.7f) else Edge, RoundedCornerShape(20.dp))
-                        .clickable { tab = i }
-                        .padding(vertical = 10.dp),
-                    contentAlignment = Alignment.Center
-                ) { Text(label, color = if (on) TextMain else TextDim, fontSize = 15.sp) }
+        ProfileSwitch(tab, listOf("АВРОРА" to Glow, "ГЕСПЕРА" to HespColor, "Я" to Violet)) { tab = it }
+        when (tab) {
+            0 -> AuroraDossier(vm)
+            1 -> HesperaDossier(hvm, vm.hand)
+            else -> {
+                ProfileHeader(vm, AUTHOR_ME, vm.myProfile, editable = true)
+                PostComposer(vm)
+                val mine = vm.posts.filter { it.author == AUTHOR_ME }.reversed()
+                if (mine.isEmpty()) Hint("Твоих постов пока нет.")
+                mine.forEach { PostCard(vm, it) }
             }
-        }
-        if (tab == 0) {
-            ProfileHeader(vm, AUTHOR_HER, vm.herProfile, editable = false)
-            val mine = vm.posts.filter { it.author == AUTHOR_HER }.reversed()
-            if (mine.isEmpty()) Hint("Постов у неё пока нет.")
-            mine.forEach { PostCard(vm, it) }
-        } else {
-            ProfileHeader(vm, AUTHOR_ME, vm.myProfile, editable = true)
-            PostComposer(vm)
-            val mine = vm.posts.filter { it.author == AUTHOR_ME }.reversed()
-            if (mine.isEmpty()) Hint("Твоих постов пока нет.")
-            mine.forEach { PostCard(vm, it) }
         }
     }
 }
+
+/** Переключатель страниц: тонкие подписи с разрядкой и полоска под выбранной. */
+@Composable
+fun ProfileSwitch(selected: Int, items: List<Pair<String, Color>>, onSelect: (Int) -> Unit) {
+    Row(Modifier.fillMaxWidth()) {
+        items.forEachIndexed { i, (label, accent) ->
+            val on = i == selected
+            Column(
+                Modifier.weight(1f).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onSelect(i) }
+                    .padding(vertical = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(label, color = if (on) TextMain else TextDim, fontSize = 11.sp, letterSpacing = 2.4.sp, fontFamily = FontFamily.Monospace)
+                Spacer(Modifier.height(6.dp))
+                Box(Modifier.fillMaxWidth(if (on) 0.5f else 0.2f).height(if (on) 2.dp else 1.dp).background(if (on) accent else Edge))
+            }
+        }
+    }
+}
+
+private val dayFmt = SimpleDateFormat("d MMM", Locale("ru"))
+private val PERSONA_AXES = listOf("тепло", "игра", "прямота", "слова", "стикеры")
+private val KIND_TITLES = mapOf("язык" to "язык", "поворот" to "повороты", "тон" to "тон", "планы" to "планы", "адонис" to "об Адонисе")
+
+/** Профиль Авроры: ядро, показания и блоки, текст которых открывается по нажатию. */
+@Composable
+fun AuroraDossier(vm: ChatViewModel) {
+    val now = System.currentTimeMillis()
+    val msgs = vm.messages
+    val first = msgs.firstOrNull()?.time ?: now
+    val days = ((now - first) / 86_400_000L + 1).coerceAtLeast(1)
+    val mem = vm.memory
+    val hand = vm.hand
+    val state = vm.exeStates.lastOrNull()
+    val herPosts = vm.posts.filter { it.author == AUTHOR_HER }
+    val pending = vm.exePlans.filter { it.status == "pending" }.sortedBy { it.at }
+    val talk = remember(msgs.size) { perDay(msgs.map { it.time }) }
+    val herTalk = remember(msgs.size) { perDay(msgs.filter { it.role == "assistant" }.map { it.time }) }
+    val p = vm.persona
+    val radar = listOf(p.warmth, p.play, p.direct, p.verbose, p.stickers).map { it / 4f }
+    val accent = Glow
+
+    CoreHero(
+        auroraCore(), "AVRORA",
+        vm.herProfile.status.ifBlank { state?.name ?: "" },
+        listOf("ДНЕЙ" to "$days", "ЯДРО" to "${mem.core.size}", "ЭПИЗОДЫ" to "${mem.episodes.size}", "СЧЁТ" to "${vm.walletAurora} ₵")
+    )
+    Spacer(Modifier.height(4.dp))
+    DossierGrid(listOf(
+        DossierItem("state", "СОСТОЯНИЕ", state?.name ?: "не отмечено", accent,
+            preview = { Sparkline(perDay(vm.exeStates.map { it.at }), accent) }
+        ) {
+            if (state == null) DetailHint("Своё состояние она отмечает сама маркером [состояние: …]. Пока не отмечала.")
+            else DetailLine("сейчас · " + postFmt.format(Date(state.at)), state.name, state.why)
+            vm.exeStates.reversed().drop(1).take(6).forEach { DetailLine(postFmt.format(Date(it.at)), it.name, it.why) }
+        },
+        DossierItem("persona", "ХАРАКТЕР", "${radar.count { it != 0.5f }} из 5 настроено", Violet,
+            preview = { Radar(radar, PERSONA_AXES, Violet, Modifier.size(40.dp), withLabels = false) }
+        ) {
+            Radar(radar, PERSONA_AXES, Violet, Modifier.fillMaxWidth().height(220.dp), withLabels = true)
+            val text = p.compile()
+            if (text.isBlank()) DetailHint("Всё по умолчанию: характер идёт из её ядра без поправок.")
+            else text.lines().forEach { DetailLine("", it.removePrefix("- ")) }
+            DetailHint("Меняется в настройках: Характер.")
+        },
+        DossierItem("core", "ЯДРО ПАМЯТИ", "${mem.core.size} записей", accent,
+            preview = { MiniBars(CORE_KINDS.map { k -> mem.core.count { it.kind == k }.toFloat() }, accent) }
+        ) {
+            if (mem.core.isEmpty()) DetailHint("Ядро пока пустое: оно растёт из эпизодов, и каждую правку она одобряет сама.")
+            CORE_KINDS.forEach { k ->
+                val list = mem.core.filter { it.kind == k }
+                if (list.isNotEmpty()) {
+                    Text((KIND_TITLES[k] ?: k).uppercase() + " · ${list.size}", color = accent, fontSize = 9.sp, fontFamily = FontFamily.Monospace, letterSpacing = 1.2.sp)
+                    list.takeLast(6).forEach { DetailLine("", it.text) }
+                    if (list.size > 6) DetailHint("и ещё ${list.size - 6}")
+                }
+            }
+            if (mem.pending.isNotEmpty()) DetailHint("ждут её решения: ${mem.pending.size}")
+        },
+        DossierItem("episodes", "ЭПИЗОДЫ", "${mem.episodes.size}", accent,
+            preview = { Sparkline(perDay(mem.episodes.map { it.to }), accent) }
+        ) {
+            if (mem.episodes.isEmpty()) DetailHint("Эпизоды появятся, когда переписка начнёт сжиматься в память.")
+            mem.episodes.reversed().take(4).forEach { e ->
+                DetailLine(dayFmt.format(Date(e.from)) + " — " + dayFmt.format(Date(e.to)), e.text)
+            }
+        },
+        DossierItem("talk", "РАЗГОВОРЫ", "сегодня ${talk.last().toInt()}", accent,
+            preview = { Sparkline(talk, accent) }
+        ) {
+            StatRow(listOf("ВСЕГО" to "${msgs.size}", "ЕЁ" to "${msgs.count { it.role == "assistant" }}", "ТВОИХ" to "${msgs.count { it.role == "user" }}"), accent)
+            Sparkline(herTalk, accent, Modifier.fillMaxWidth().height(70.dp))
+            DetailHint("Линия — её сообщения по дням за две недели, справа сегодня.")
+            val sameDay = msgs.groupBy { dayFmt.format(Date(it.time)) }.maxByOrNull { it.value.size }
+            if (sameDay != null) DetailLine("самый живой день", "${sameDay.key} — ${sameDay.value.size} сообщений")
+        },
+        DossierItem("hand", "РУКА", if (!hand.configured) "не подключена" else if (hand.off) "отключена" else "${hand.used} / ${hand.cap}", accent,
+            preview = { RingGauge(if (hand.cap > 0) hand.used.toFloat() / hand.cap else 0f, if (hand.off) Magenta else accent, "${hand.used}") }
+        ) {
+            if (!hand.configured) DetailHint("Сервера для руки нет: команды она выполнять не может.")
+            else {
+                DetailLine("сегодня", "${hand.used} команд из ${hand.cap}")
+                DetailLine("рубильник", if (hand.off) "выключена" else "включена")
+                DetailLine("право", if (vm.toolHand) "разрешена" else "запрещена")
+            }
+            DetailHint("Журнал команд и рубильник: Настройки → Права и рука.")
+        },
+        DossierItem("plans", "ПЛАНЫ", if (pending.isEmpty()) "нет" else "${pending.size} ждут", accent,
+            preview = { SegmentMeter(pending.size, maxOf(6, pending.size), accent) }
+        ) {
+            if (pending.isEmpty()) DetailHint("Назначенных на время сообщений нет. Она ставит их сама маркером [напишу: …].")
+            pending.take(6).forEach { DetailLine(postFmt.format(Date(it.at)), it.topic) }
+            vm.exePlans.filter { it.status != "pending" }.takeLast(3).reversed().forEach {
+                DetailLine(postFmt.format(Date(it.at)) + " · " + if (it.status == "done") "написала" else "передумала", it.topic, it.outcome)
+            }
+        },
+        DossierItem("diary", "ДНЕВНИК · ЗАМЕТКИ", "${vm.diary.size} · ${vm.exeNotes.size}", accent,
+            preview = { Sparkline(perDay(vm.diary.map { it.at } + vm.exeNotes.map { it.at }), accent) }
+        ) {
+            val d = vm.diary.lastOrNull()
+            if (d != null) DetailLine("дневник · " + postFmt.format(Date(d.at)), d.text)
+            else DetailHint("Дневника пока нет.")
+            vm.exeNotes.reversed().take(5).forEach { DetailLine(it.kind + " · " + postFmt.format(Date(it.at)), it.text) }
+        },
+        DossierItem("page", "СТРАНИЦА", "${herPosts.size} постов", accent,
+            preview = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    RoundAvatar(vm, AUTHOR_HER, vm.herProfile, 32.dp)
+                    Spacer(Modifier.width(8.dp))
+                    Text(vm.herProfile.status.ifBlank { "без статуса" }, color = TextDim, fontSize = 11.sp, maxLines = 2)
+                }
+            }
+        ) {
+            DetailHint("Страницу ведёт она сама: статус, посты, лайки.")
+            if (herPosts.isEmpty()) DetailHint("Постов у неё пока нет.")
+            herPosts.reversed().take(5).forEach { PostCard(vm, it) }
+        },
+        DossierItem("quotes", "ЦИТАТЫ", "${vm.quotes.size}", accent,
+            preview = { MiniBars(listOf(vm.quotes.count { it.author != "user" }.toFloat(), vm.quotes.count { it.author == "user" }.toFloat()), accent) }
+        ) {
+            if (vm.quotes.isEmpty()) DetailHint("Цитатник пуст.")
+            vm.quotes.reversed().take(4).forEach { DetailLine("№${it.n} · " + quoteAuthorName(it.author), "«${it.text}»") }
+        }
+    ))
+    Spacer(Modifier.height(16.dp))
+}
+
+

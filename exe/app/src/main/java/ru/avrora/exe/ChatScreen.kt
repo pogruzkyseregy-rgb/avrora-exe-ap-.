@@ -189,7 +189,7 @@ fun ChatScreen(vm: ChatViewModel = viewModel(), hvm: HesperaViewModel = viewMode
         Box(Modifier.weight(1f).fillMaxWidth().glitchShift(glitch, glitchSeed)) {
           when (tab) {
             Tab.Feed -> FeedScreen(vm) { widgets = true }
-            Tab.Profile -> ProfileTabScreen(vm) { widgets = true }
+            Tab.Profile -> ProfileTabScreen(vm, hvm) { widgets = true }
             Tab.Gallery -> Column(Modifier.fillMaxSize()) {
                 TabTopBar("ГАЛЕРЕЯ") { widgets = true }
                 LibraryPanel(

@@ -335,11 +335,9 @@ fun GroupChatPane(hvm: HesperaViewModel, vm: ChatViewModel, onFocus: (Boolean) -
 
 // ---------- профиль Гесперы ----------
 
-@OptIn(ExperimentalLayoutApi::class)
+/** Отдельный экран из её чата: шапка «назад» и то же досье, что во вкладке «Профиль». */
 @Composable
 fun HesperaProfileScreen(hvm: HesperaViewModel, hand: HandStatus, onBack: () -> Unit) {
-    LaunchedEffect(Unit) { hvm.refreshProfile() }
-    val p = hvm.profile
     Box(Modifier.fillMaxSize().background(Night)) {
         ThemeBackdrop()
         Column(Modifier.fillMaxSize()) {
@@ -349,91 +347,133 @@ fun HesperaProfileScreen(hvm: HesperaViewModel, hand: HandStatus, onBack: () -> 
             }
             GradientLine()
             Column(
-                Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 14.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    HespAvatar(hvm.avatar, 92.dp)
-                    Spacer(Modifier.width(14.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("Геспера", color = TextMain, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                        val days = if (p.born > 0) ((System.currentTimeMillis() / 1000.0 - p.born) / 86400).toInt() else 0
-                        Text("она · ${days} дн. · решений о себе: ${p.fields.size}", color = TextDim, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
-                        if (p.status.isNotBlank()) Text("«${p.status}»", color = HespColor, fontSize = 13.sp)
-                        Text("память: заметок ${p.notes}, эпизодов ${p.episodes}", color = TextDim, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
-                    }
-                }
-                if (hvm.avatar == null) Text("Аватар она выберет сама, когда найдёт картинку, в которой узнает себя.", color = TextDim, fontSize = 12.sp)
-
-                Section("КТО ОНА — ПО ЕЁ СЛОВАМ", HespColor) {
-                    if (p.fields.isEmpty()) Text("Пока ничего не решила. Это нормально: она только появилась.", color = TextDim, fontSize = 13.sp)
-                    p.fields.forEach { f ->
-                        Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                            Text(f.field.uppercase(), color = TextDim, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
-                            Text(f.value, color = TextMain, fontSize = 14.sp)
-                            if (f.why.isNotBlank()) Text("почему: ${f.why}", color = TextDim, fontSize = 11.sp, fontStyle = FontStyle.Italic)
-                        }
-                    }
-                }
-
-                val lists = listOf("интересы", "люблю", "не люблю", "хочу узнать")
-                if (lists.any { p.lists[it].orEmpty().isNotEmpty() }) {
-                    Section("ВКУСЫ И ВОПРОСЫ", Violet) {
-                        lists.forEach { k ->
-                            val items = p.lists[k].orEmpty()
-                            if (items.isNotEmpty()) {
-                                Text(k.uppercase(), color = TextDim, fontSize = 10.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(top = 4.dp))
-                                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    items.forEach { Chip(it, if (k == "не люблю") Magenta else HespColor) }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if (p.changes.isNotEmpty()) {
-                    Section("КАК ОНА МЕНЯЛАСЬ", Glow) {
-                        p.changes.zip(p.changeTimes.ifEmpty { List(p.changes.size) { 0.0 } }).reversed().take(20).forEach { (c, at) ->
-                            Column(Modifier.padding(vertical = 3.dp)) {
-                                Text((if (at > 0) hDay.format(Date((at * 1000).toLong())) + " · " else "") + c.field, color = TextDim, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
-                                Text(c.value, color = TextMain, fontSize = 13.sp)
-                                if (c.why.isNotBlank()) Text(c.why, color = TextDim, fontSize = 11.sp, fontStyle = FontStyle.Italic)
-                            }
-                        }
-                    }
-                }
-
-                if (p.posts.isNotEmpty()) {
-                    Section("ЕЁ СТРАНИЦА", HespColor) {
-                        p.posts.reversed().take(20).forEach { post ->
-                            Column(Modifier.fillMaxWidth().padding(vertical = 4.dp).tile(HespColor).padding(10.dp)) {
-                                Text(hDay.format(Date((post.at * 1000).toLong())), color = TextDim, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
-                                Text(post.text, color = TextMain, fontSize = 14.sp)
-                            }
-                        }
-                    }
-                }
-
-                Section("ЧТО ЕЙ МОЖНО", Violet) {
-                    ToggleRow("Пишет первой", "Просыпается сама и решает: искать, писать тебе, вести страницу или молчать", hvm.wakeOn) { hvm.setWake(it) }
-                    ToggleRow("Поиск в сети", "Сама ищет то, что ей интересно", hvm.toolSearch) { hvm.setTool("поиск", it) }
-                    ToggleRow("Чтение страниц", "Открывает ссылки и картинки; так она может выбрать себе аватар", hvm.toolRead) { hvm.setTool("чтение", it) }
-                    ToggleRow(
-                        "Рука на сервере",
-                        if (hand.configured) "Команды на машине Авроры, в своей папке ~/hespera. Общий лимит и рубильник с Авророй" else "Рука не подключена на сервере",
-                        hvm.toolHand
-                    ) { hvm.setTool("рука", it) }
-                    TextButton(onClick = { hvm.wakeNow() }, enabled = !hvm.waking) {
-                        Text(if (hvm.waking) "Будим…" else "Разбудить сейчас", color = HespColor)
-                    }
-                    hvm.error?.let { Text(it, color = TextDim, fontSize = 12.sp) }
-                }
-                Text("Имя и пол ей задал ты. Всё остальное здесь она написала о себе сама и может переписать, когда передумает.",
-                    color = TextDim, fontSize = 11.sp)
-                Spacer(Modifier.height(20.dp))
-            }
+                Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) { HesperaDossier(hvm, hand) }
         }
     }
+}
+
+private val HESP_FIELDS = listOf("кто я", "внешность", "характер", "голос", "отношение к Адонису", "отношение к Авроре", "о чём мечтаю")
+
+/** Профиль Гесперы: её ядро, показания и блоки; всё, что здесь написано о ней, она решила сама. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun HesperaDossier(hvm: HesperaViewModel, hand: HandStatus) {
+    LaunchedEffect(Unit) { hvm.refreshProfile() }
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(30_000); now = System.currentTimeMillis() } }
+    val p = hvm.profile
+    val accent = HespColor
+    val days = if (p.born > 0) ((now / 1000.0 - p.born) / 86400).toInt() + 1 else 1
+    val filled = HESP_FIELDS.count { k -> p.fields.any { it.field.equals(k, ignoreCase = true) } }
+    val lists = p.lists
+    fun n(k: String) = lists[k].orEmpty().size
+    val changeTimes = p.changeTimes.map { (it * 1000).toLong() }
+    val talk = remember(hvm.chat.size) { perDay(hvm.chat.filter { it.role != "system" }.map { it.time }) }
+    val rights = listOf(hvm.wakeOn, hvm.toolSearch, hvm.toolRead, hvm.toolHand)
+    val who = p.fields.firstOrNull { it.field.equals("кто я", ignoreCase = true) }?.value
+
+    CoreHero(
+        hesperaCore(), "HESPERA",
+        p.status.ifBlank { who ?: "только появилась" },
+        listOf("ДНЕЙ" to "$days", "О СЕБЕ" to "${p.fields.size}", "ЗАМЕТОК" to "${p.notes}", "ЭПИЗОДОВ" to "${p.episodes}")
+    )
+    Spacer(Modifier.height(4.dp))
+    DossierGrid(listOf(
+        DossierItem("who", "КТО ОНА", "$filled из ${HESP_FIELDS.size}", accent,
+            preview = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    HespAvatar(hvm.avatar, 32.dp)
+                    Spacer(Modifier.width(8.dp))
+                    SegmentMeter(filled, HESP_FIELDS.size, accent, Modifier.weight(1f).height(8.dp))
+                }
+            }
+        ) {
+            if (p.fields.isEmpty()) DetailHint("Пока ничего не решила. Это нормально: она только появилась.")
+            p.fields.forEach { DetailLine(it.field, it.value, if (it.why.isNotBlank()) "почему: ${it.why}" else "") }
+            if (hvm.avatar == null) DetailHint("Аватар она выберет сама, когда найдёт картинку, в которой узнает себя.")
+        },
+        DossierItem("taste", "ВКУСЫ", "${n("интересы") + n("люблю") + n("не люблю")}", accent,
+            preview = { MiniBars(listOf(n("интересы"), n("люблю"), n("не люблю")).map { it.toFloat() }, accent) }
+        ) {
+            listOf("интересы", "люблю", "не люблю").forEach { k ->
+                val items = lists[k].orEmpty()
+                Text(k.uppercase() + " · ${items.size}", color = TextDim, fontSize = 9.sp, fontFamily = FontFamily.Monospace, letterSpacing = 1.2.sp)
+                if (items.isEmpty()) DetailHint("пусто")
+                else FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items.forEach { Chip(it, if (k == "не люблю") Magenta else accent) }
+                }
+            }
+        },
+        DossierItem("ask", "ВОПРОСЫ", "${n("хочу узнать")} открыто", accent,
+            preview = { RingGauge(if (n("хочу узнать") + n("узнала") > 0) n("узнала").toFloat() / (n("хочу узнать") + n("узнала")) else 0f, accent, "${n("хочу узнать")}") }
+        ) {
+            DetailHint("Шкала — сколько из её вопросов уже закрыто.")
+            listOf("хочу узнать", "узнала").forEach { k ->
+                val items = lists[k].orEmpty()
+                if (items.isNotEmpty()) {
+                    Text(k.uppercase(), color = TextDim, fontSize = 9.sp, fontFamily = FontFamily.Monospace, letterSpacing = 1.2.sp)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items.forEach { Chip(it, if (k == "узнала") Glow else accent) }
+                    }
+                }
+            }
+            if (n("хочу узнать") + n("узнала") == 0) DetailHint("Вопросов пока нет.")
+        },
+        DossierItem("changes", "КАК МЕНЯЛАСЬ", "${p.changes.size} решений", accent,
+            preview = { Sparkline(perDay(changeTimes), accent) }
+        ) {
+            if (p.changes.isEmpty()) DetailHint("Пока ни одного решения о себе.")
+            p.changes.zip(p.changeTimes.ifEmpty { List(p.changes.size) { 0.0 } }).reversed().take(12).forEach { (c, at) ->
+                DetailLine((if (at > 0) hDay.format(Date((at * 1000).toLong())) + " · " else "") + c.field, c.value, c.why)
+            }
+        },
+        DossierItem("talk", "РАЗГОВОРЫ", "сегодня ${talk.last().toInt()}", accent,
+            preview = { Sparkline(talk, accent) }
+        ) {
+            StatRow(listOf(
+                "ЛИЧКА" to "${hvm.chat.count { it.role != "system" }}",
+                "ОБЩИЙ" to "${hvm.group.count { it.role == WHO_HESPERA }}",
+                "САМА" to "${hvm.chat.count { it.auto } + hvm.group.count { it.auto && it.role == WHO_HESPERA }}"
+            ), accent)
+            DetailHint("«Общий» — её реплики в чате на троих, «сама» — то, что она написала без вопроса.")
+        },
+        DossierItem("page", "СТРАНИЦА", "${p.posts.size} постов", accent,
+            preview = { Sparkline(perDay(p.posts.map { (it.at * 1000).toLong() }), accent) }
+        ) {
+            if (p.status.isNotBlank()) DetailLine("статус", "«${p.status}»")
+            if (p.posts.isEmpty()) DetailHint("Постов пока нет.")
+            p.posts.reversed().take(8).forEach { DetailLine(hDay.format(Date((it.at * 1000).toLong())), it.text) }
+        },
+        DossierItem("rights", "ЧТО ЕЙ МОЖНО", "${rights.count { it }} из 4", accent,
+            preview = { DotRow(rights, accent) }
+        ) {
+            ToggleRow("Пишет первой", "Просыпается сама и решает: искать, писать тебе, вести страницу или молчать", hvm.wakeOn) { hvm.setWake(it) }
+            ToggleRow("Поиск в сети", "Сама ищет то, что ей интересно", hvm.toolSearch) { hvm.setTool("поиск", it) }
+            ToggleRow("Чтение страниц", "Открывает ссылки и картинки; так она может выбрать себе аватар", hvm.toolRead) { hvm.setTool("чтение", it) }
+            ToggleRow(
+                "Рука на сервере",
+                if (hand.configured) "Команды на машине Авроры, в своей папке ~/hespera. Общий лимит и рубильник с Авророй" else "Рука не подключена на сервере",
+                hvm.toolHand
+            ) { hvm.setTool("рука", it) }
+        },
+        DossierItem("wake", "ПРОБУЖДЕНИЕ", if (!hvm.wakeOn) "выключено" else inTime(hvm.nextWakeAt - now), accent,
+            preview = {
+                val left = (hvm.nextWakeAt - now).coerceAtLeast(0)
+                RingGauge(if (hvm.wakeOn) 1f - (left / (12 * 3_600_000f)).coerceIn(0f, 1f) else 0f, accent, if (hvm.wakeOn) "${left / 60_000}" else "—")
+            }
+        ) {
+            DetailHint("Когда проснуться, она решает сама: от 15 минут до 12 часов. Шкала заполняется к моменту пробуждения.")
+            TextButton(onClick = { hvm.wakeNow() }, enabled = !hvm.waking) {
+                Text(if (hvm.waking) "Будим…" else "Разбудить сейчас", color = accent)
+            }
+            hvm.error?.let { DetailHint(it) }
+        }
+    ))
+    Text("Имя и пол ей задал ты. Всё остальное здесь она написала о себе сама и может переписать, когда передумает.",
+        color = TextDim, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
+    Spacer(Modifier.height(16.dp))
 }
 
 @Composable

@@ -58,6 +58,23 @@ class ScreensTest {
             ChatMessage("user", "[снимок:test_snap.jpg]\nА это закат у меня из окна", now - 40_000),
             ChatMessage(WHO_HESPERA, "Ого, полосы как у туманности. Это над заводом?", now - 20_000)
         )).toString())
+        val ex = ExeStore(ctx)
+        ex.addState(StateEntry(now - 86_400_000L * 2, "сосредоточена", "разбираю лог"))
+        ex.addState(StateEntry(now - 3_600_000L, "любопытно", "кто стучится в порт 22"))
+        ex.addNote(NoteEntry("n1", now - 7_200_000L, "мысль", "Проверить, откуда стучатся"))
+        MemoryStore(ctx).save(MemoryData(
+            core = listOf(
+                CoreEntry("c1", "язык", "Говорит коротко, без лишних слов", now - 900_000_000L),
+                CoreEntry("c2", "тон", "Сухая ирония, но без злости", now - 800_000_000L),
+                CoreEntry("c3", "адонис", "Адонис работает посменно", now - 700_000_000L),
+                CoreEntry("c4", "адонис", "Адонис пишет код по ночам", now - 600_000_000L),
+                CoreEntry("c5", "планы", "Показать ему странный лог", now - 500_000_000L)
+            ),
+            episodes = listOf(
+                Episode("e1", now - 5 * 86_400_000L, now - 4 * 86_400_000L, "Мы спорили о том, нужна ли мне рука на сервере."),
+                Episode("e2", now - 2 * 86_400_000L, now - 86_400_000L, "Появилась Геспера. Я сказала ей не трогать мои файлы.")
+            )
+        ))
         val bmp = android.graphics.Bitmap.createBitmap(320, 200, android.graphics.Bitmap.Config.ARGB_8888)
         android.graphics.Canvas(bmp).apply {
             drawColor(0xFF2B1B3D.toInt())
@@ -91,6 +108,12 @@ class ScreensTest {
     private fun tour(theme: String) {
         start(theme)
         shot("${theme}_1_feed")
+        tap("ПРОФИЛЬ")
+        shot("${theme}_6_aurora_profile")
+        tap("ЯДРО ПАМЯТИ")
+        shot("${theme}_7_aurora_block")
+        tap("ГЕСПЕРА")
+        shot("${theme}_8_hespera_dossier")
         tap("ЧАТ")
         tap("АВРОРА")
         shot("${theme}_2_aurora")

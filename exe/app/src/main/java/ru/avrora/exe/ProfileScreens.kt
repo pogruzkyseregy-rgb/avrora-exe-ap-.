@@ -366,7 +366,7 @@ fun AuroraDossier(vm: ChatViewModel) {
             vm.exeStates.reversed().drop(1).take(6).forEach { DetailLine(postFmt.format(Date(it.at)), it.name, it.why) }
         },
         DossierItem("persona", "ХАРАКТЕР", "${radar.count { it != 0.5f }} из 5 настроено", Violet,
-            preview = { Radar(radar, PERSONA_AXES, Violet, Modifier.size(40.dp), withLabels = false) }
+            preview = { Radar(radar, PERSONA_AXES, Violet, Modifier.size(46.dp), withLabels = false) }
         ) {
             Radar(radar, PERSONA_AXES, Violet, Modifier.fillMaxWidth().height(220.dp), withLabels = true)
             val text = p.compile()

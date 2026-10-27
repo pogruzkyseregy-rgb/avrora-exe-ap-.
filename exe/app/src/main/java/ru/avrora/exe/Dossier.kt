@@ -215,7 +215,7 @@ private fun DrawScope.drawCore(s: CoreStyle, slow: Float, mid: Float, sweep: Flo
 fun CoreHero(style: CoreStyle, name: String, line: String, readouts: List<Pair<String, String>>) {
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.fillMaxWidth().height(268.dp)) {
-            CoreReactor(style, Modifier.size(248.dp).align(Alignment.Center))
+            CoreReactor(style, Modifier.size(256.dp).align(Alignment.Center))
             val spots = listOf(Alignment.TopStart, Alignment.TopEnd, Alignment.BottomStart, Alignment.BottomEnd)
             readouts.take(4).forEachIndexed { i, (label, value) ->
                 val end = i % 2 == 1
@@ -372,14 +372,15 @@ fun MiniBars(values: List<Float>, accent: Color, modifier: Modifier = Modifier.f
     Canvas(modifier) {
         val n = max(1, values.size)
         val top = max(1f, values.maxOrNull() ?: 1f)
-        val gap = 4.dp.toPx()
-        val bw = (size.width - gap * (n - 1)) / n
-        drawLine(accent.copy(alpha = 0.25f), Offset(0f, size.height), Offset(size.width, size.height), 1.dp.toPx())
+        val gap = 7.dp.toPx()
+        val bw = min(14.dp.toPx(), (size.width - gap * (n - 1)) / n)
+        drawLine(accent.copy(alpha = 0.3f), Offset(0f, size.height), Offset(size.width, size.height), 1.dp.toPx())
         values.forEachIndexed { i, v ->
-            val h = (v / top) * (size.height - 2.dp.toPx())
+            val h = max(1.5.dp.toPx(), (v / top) * (size.height - 2.dp.toPx()))
             val x = i * (bw + gap)
-            drawRect(accent.copy(alpha = 0.16f), Offset(x, 0f), Size(bw, size.height))
-            drawRect(accent.copy(alpha = 0.85f), Offset(x, size.height - h), Size(bw, h))
+            // тонкая вертикальная направляющая вместо тяжёлой подложки
+            drawLine(accent.copy(alpha = 0.14f), Offset(x + bw / 2, 0f), Offset(x + bw / 2, size.height), 1.dp.toPx())
+            drawRect(Brush.verticalGradient(listOf(accent, accent.copy(alpha = 0.45f)), size.height - h, size.height), Offset(x, size.height - h), Size(bw, h))
         }
     }
 }

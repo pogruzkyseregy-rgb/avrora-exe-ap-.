@@ -6,7 +6,8 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
 import androidx.work.testing.WorkManagerTestInitHelper
 import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -113,7 +114,7 @@ class ScreensTest {
         shot("${theme}_6_aurora_profile")
         tap("ЯДРО ПАМЯТИ")
         shot("${theme}_7_aurora_block")
-        rule.onAllNodesWithText("пишет код по ночам", substring = true)[0].performScrollTo()
+        rule.onRoot().performTouchInput { swipeUp(startY = height * 0.75f, endY = height * 0.15f, durationMillis = 300) }
         shot("${theme}_7b_aurora_block_text")
         tap("ГЕСПЕРА")
         shot("${theme}_8_hespera_dossier")

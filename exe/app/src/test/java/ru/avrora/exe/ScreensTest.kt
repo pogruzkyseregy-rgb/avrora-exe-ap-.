@@ -8,6 +8,7 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.test.swipeDown
 import androidx.work.testing.WorkManagerTestInitHelper
 import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -121,6 +122,7 @@ class ScreensTest {
         shot("${theme}_7_aurora_block")
         rule.onRoot().performTouchInput { swipeUp(startY = height * 0.75f, endY = height * 0.15f, durationMillis = 300) }
         shot("${theme}_7b_aurora_block_text")
+        repeat(3) { rule.onRoot().performTouchInput { swipeDown(startY = height * 0.2f, endY = height * 0.9f, durationMillis = 300) }; settle() }
         tap("ГЕСПЕРА")
         shot("${theme}_8_hespera_dossier")
         tap("ЧАТ")

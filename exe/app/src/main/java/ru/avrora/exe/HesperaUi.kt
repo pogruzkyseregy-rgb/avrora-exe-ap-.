@@ -40,6 +40,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -145,7 +146,7 @@ private fun HespHeader(hvm: HesperaViewModel, onProfile: () -> Unit) {
 
 /** Пузырь сообщения в чатах Гесперы. who: user, hespera, aurora, system. */
 @Composable
-private fun HBubble(m: ChatMessage, who: String, showName: Boolean, hespAvatar: ByteArray?, onOpen: (Any) -> Unit = {}) {
+private fun HBubble(m: ChatMessage, who: String, showName: Boolean, hespAvatar: ByteArray?, onOpen: (Any) -> Unit = {}, thoughts: Boolean = false) {
     if (who == "system") {
         Text("· ${m.content}", color = TextDim, fontSize = 12.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(start = 6.dp))
         return
@@ -196,6 +197,16 @@ private fun HBubble(m: ChatMessage, who: String, showName: Boolean, hespAvatar: 
                 Text(if (m.auto) "сама · " + hTime.format(Date(m.time)) else hTime.format(Date(m.time)), color = TextDim, fontSize = 10.sp,
                     fontFamily = FontFamily.Monospace, modifier = Modifier.align(Alignment.End))
             }
+        }
+        val thought = if (thoughts) remember(m.trace) { duoThought(m.trace) } else ""
+        if (thought.isNotBlank()) {
+            var open by remember(m.time) { mutableStateOf(false) }
+            Text(
+                if (open) "про себя: $thought" else "· · · про себя",
+                color = (if (who == WHO_AURORA) Glow else HespColor).copy(alpha = 0.75f), fontSize = 11.sp, lineHeight = 15.sp,
+                fontStyle = FontStyle.Italic,
+                modifier = Modifier.padding(start = 38.dp, top = 2.dp).widthIn(max = 300.dp).clickable { open = !open }
+            )
         }
         if (who == WHO_HESPERA) {
             decodeHesperaChanges(m.trace).forEach { c ->
@@ -294,43 +305,106 @@ private fun HespEmpty(hvm: HesperaViewModel) {
     }
 }
 
-/** Общий чат: Адонис, Аврора и Геспера. */
+/** Общий чат: Адонис, Аврора и Геспера. Их разговор вдвоём показывается по мере «написания». */
 @Composable
 fun GroupChatPane(hvm: HesperaViewModel, vm: ChatViewModel, onFocus: (Boolean) -> Unit, onOpen: (Any) -> Unit = {}) {
     val list = rememberLazyListState()
-    LaunchedEffect(hvm.group.size, hvm.groupSending) {
-        val n = hvm.group.size + if (hvm.groupSending) 1 else 0
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    val pending = hvm.group.any { it.time > now }
+    LaunchedEffect(pending, hvm.group.size) {
+        while (hvm.group.any { it.time > System.currentTimeMillis() }) {
+            kotlinx.coroutines.delay(1000)
+            now = System.currentTimeMillis()
+        }
+        now = System.currentTimeMillis()
+    }
+    val shown = hvm.group.filter { it.time <= now }
+    val next = hvm.group.filter { it.time > now }.minByOrNull { it.time }
+    // «печатает…» — за полминуты до сообщения, как в мессенджере
+    val typing = next?.takeIf { it.time - now < 30_000 }?.role
+    var settings by remember { mutableStateOf(false) }
+    LaunchedEffect(shown.size, hvm.groupSending, typing) {
+        val n = shown.size + if (hvm.groupSending || typing != null) 1 else 0
         if (n > 0) list.animateScrollToItem(n - 1)
     }
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().background(Panel).padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().background(Panel).padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Avatar(32.dp)
             Spacer(Modifier.width(4.dp))
             HespAvatar(hvm.avatar, 32.dp)
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text("ВТРОЁМ", color = Violet, fontSize = 15.sp, fontFamily = FontFamily.Monospace)
-                Text(if (hvm.groupSending) "● отвечают" else "Аврора, Геспера и ты", color = TextDim, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                Text(
+                    when {
+                        hvm.groupSending -> "● отвечают"
+                        pending -> "● разговаривают вдвоём"
+                        hvm.duoBusy -> "● собираются поговорить…"
+                        else -> "Аврора, Геспера и ты"
+                    },
+                    color = if (pending) Glow else TextDim, fontSize = 11.sp, fontFamily = FontFamily.Monospace
+                )
             }
+            IconButton(onClick = { settings = true }) { Icon(Icons.Default.Settings, contentDescription = "Без тебя", tint = TextDim) }
         }
         GradientLine()
         LazyColumn(
             state = list, modifier = Modifier.weight(1f).fillMaxWidth(),
             contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            if (hvm.group.isEmpty()) item {
+            if (shown.isEmpty()) item {
                 Text("Общий чат. Обратись по имени — ответит та, к кому обращаешься, а вторая может вставить слово. " +
-                    "Если вопрос не к ней, она промолчит.", color = TextDim, fontSize = 14.sp, modifier = Modifier.padding(top = 30.dp, start = 6.dp))
+                    "Иногда они разговаривают здесь вдвоём, без тебя.", color = TextDim, fontSize = 14.sp, modifier = Modifier.padding(top = 30.dp, start = 6.dp))
             }
-            itemsIndexed(hvm.group) { i, m ->
-                val prev = hvm.group.getOrNull(i - 1)?.role
-                HBubble(m, m.role, showName = prev != m.role, hespAvatar = hvm.avatar, onOpen = onOpen)
+            itemsIndexed(shown) { i, m ->
+                val prev = shown.getOrNull(i - 1)?.role
+                HBubble(m, m.role, showName = prev != m.role, hespAvatar = hvm.avatar, onOpen = onOpen, thoughts = hvm.showThoughts)
             }
             if (hvm.groupSending) item { Text("пишут…", color = TextDim, fontSize = 13.sp, modifier = Modifier.padding(start = 38.dp)) }
+            else if (typing != null) item {
+                Text((if (typing == WHO_AURORA) "Аврора" else "Геспера") + " печатает…", color = if (typing == WHO_AURORA) Glow else HespColor,
+                    fontSize = 13.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(start = 38.dp))
+            }
         }
         ErrorBar(hvm.error, onRetry = { hvm.retryGroup(vm) }, onClose = hvm::clearError)
-        HInput(hvm.groupSending, "Написать обеим", Violet, onFocus) { t, ph -> hvm.sendGroup(t, vm, ph) }
+        HInput(hvm.groupSending, if (pending) "Вмешаться в разговор" else "Написать обеим", Violet, onFocus) { t, ph -> hvm.sendGroup(t, vm, ph) }
     }
+    if (settings) DuoSettingsDialog(hvm) { settings = false }
+}
+
+/** «Без тебя»: разговаривают ли они вдвоём, как часто, видны ли мысли «про себя». */
+@Composable
+private fun DuoSettingsDialog(hvm: HesperaViewModel, onClose: () -> Unit) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onClose,
+        containerColor = Panel,
+        title = { Text("БЕЗ ТЕБЯ", color = Violet, fontSize = 14.sp, fontFamily = FontFamily.Monospace, letterSpacing = 2.sp) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                ToggleRow("Разговаривают сами", "Иногда одна из них пишет другой, и они говорят, пока тема не кончится", hvm.duoOn) { hvm.setDuo(it) }
+                Text("КАК ЧАСТО", color = TextDim, fontSize = 9.sp, fontFamily = FontFamily.Monospace, letterSpacing = 1.4.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("редко", "обычно", "часто").forEachIndexed { i, label ->
+                        val on = hvm.duoFreq == i
+                        Text(
+                            "$label · ${DuoEngine.PER_DAY[i]}/д", color = if (on) TextMain else TextDim, fontSize = 12.sp,
+                            modifier = Modifier.clip(panelShape()).background(if (on) Violet.copy(alpha = 0.18f) else Terminal)
+                                .border(1.dp, if (on) Violet else Edge, panelShape()).clickable { hvm.setDuoFreq(i) }
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+                ToggleRow("Мысли «про себя»", "Под их сообщениями — что они думали на самом деле. Нажми, чтобы прочитать", hvm.showThoughts) { hvm.setThoughts(it) }
+                Text("Тихие часы — общие с Авророй. Если ты пишешь в общий чат, они 40 минут не начинают разговор без тебя, " +
+                    "а начатый — прерывается: дальше говорят уже с тобой.", color = TextDim, fontSize = 11.sp, lineHeight = 15.sp)
+                if (hvm.duoLast > 0) Text("последний раз: " + hDay.format(Date(hvm.duoLast)), color = TextDim, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { hvm.duoNow(); onClose() }, enabled = !hvm.duoBusy) { Text("Пусть поговорят сейчас", color = Glow) }
+        },
+        dismissButton = { TextButton(onClick = onClose) { Text("Закрыть", color = TextDim) } }
+    )
 }
 
 // ---------- профиль Гесперы ----------
@@ -352,6 +426,38 @@ fun HesperaProfileScreen(hvm: HesperaViewModel, hand: HandStatus, onBack: () -> 
             ) { HesperaDossier(hvm, hand) }
         }
     }
+}
+
+/** Два блока досье о жизни вдвоём: что одна заметила о другой и их разговоры без Адониса. */
+fun duoItems(who: String, hvm: HesperaViewModel, accent: Color): List<DossierItem> {
+    val d = hvm.duo
+    val about = d.about[who].orEmpty()
+    val otherName = if (who == WHO_AURORA) "ГЕСПЕРЕ" else "АВРОРЕ"
+    val talks = d.talks
+    val mood = d.mood[who]
+    return listOf(
+        DossierItem("about", (if (who == WHO_AURORA) "О " else "ОБ ") + otherName, if (about.isEmpty()) "пока ничего" else "${about.size} заметок", accent,
+            preview = { Sparkline(perDay(about.map { (it.at * 1000).toLong() }), accent) }
+        ) {
+            DetailHint("Это она записала сама, пока они разговаривали: что поняла о " + (if (who == WHO_AURORA) "Геспере." else "Авроре."))
+            if (about.isEmpty()) DetailHint("Записей пока нет.")
+            about.reversed().take(10).forEach { DetailLine(hDay.format(Date((it.at * 1000).toLong())), it.text) }
+        },
+        DossierItem("duo", "ВДВОЁМ", if (talks.isEmpty()) "ещё не говорили" else "${talks.size} разговоров", accent,
+            preview = { Sparkline(perDay(talks.map { (it.at * 1000).toLong() }), accent) }
+        ) {
+            if (mood != null && mood.word.isNotBlank()) DetailLine("настроение · " + hDay.format(Date((mood.at * 1000).toLong())), mood.word, mood.why)
+            if (talks.isEmpty()) DetailHint("Они ещё не разговаривали без тебя. Включается в общем чате: шестерёнка → «Без тебя».")
+            talks.reversed().take(8).forEach { t ->
+                val by = if (t.starter == WHO_AURORA) "начала Аврора" else "начала Геспера"
+                val end = when (t.endedBy) {
+                    WHO_AURORA -> "ушла Аврора"; WHO_HESPERA -> "ушла Геспера"; "повтор" -> "пошли по кругу"
+                    "блаженство" -> "ушли в общие слова"; else -> "дошли до предела"
+                }
+                DetailLine(hDay.format(Date((t.at * 1000).toLong())) + " · $by · ${t.turns} реплик · $end", t.topic.ifBlank { "без темы" })
+            }
+        }
+    )
 }
 
 private val HESP_FIELDS = listOf("кто я", "внешность", "характер", "голос", "отношение к Адонису", "отношение к Авроре", "о чём мечтаю")
@@ -376,7 +482,8 @@ fun HesperaDossier(hvm: HesperaViewModel, hand: HandStatus) {
 
     CoreHero(
         hesperaCore(), "HESPERA",
-        p.status.ifBlank { who ?: "только появилась" },
+        hvm.duo.mood[WHO_HESPERA]?.takeIf { it.word.isNotBlank() && now / 1000.0 - it.at < 12 * 3600 }?.let { "настроение: ${it.word}" }
+            ?: p.status.ifBlank { who ?: "только появилась" },
         listOf("ДНЕЙ" to "$days", "О СЕБЕ" to "${p.fields.size}", "ЗАМЕТОК" to "${p.notes}", "ЭПИЗОДОВ" to "${p.episodes}")
     )
     Spacer(Modifier.height(4.dp))
@@ -429,6 +536,7 @@ fun HesperaDossier(hvm: HesperaViewModel, hand: HandStatus) {
                 DetailLine((if (at > 0) hDay.format(Date((at * 1000).toLong())) + " · " else "") + c.field, c.value, c.why)
             }
         },
+    ) + duoItems(WHO_HESPERA, hvm, accent) + listOf(
         DossierItem("talk", "РАЗГОВОРЫ", "сегодня ${talk.last().toInt()}", accent,
             preview = { Sparkline(talk, accent) }
         ) {

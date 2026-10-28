@@ -297,7 +297,7 @@ fun ProfileTabScreen(vm: ChatViewModel, hvm: HesperaViewModel, onGear: () -> Uni
     TabPage("ПРОФИЛЬ", onGear) {
         ProfileSwitch(tab, listOf("АВРОРА" to Glow, "ГЕСПЕРА" to HespColor, "Я" to Violet)) { tab = it }
         when (tab) {
-            0 -> AuroraDossier(vm)
+            0 -> AuroraDossier(vm, hvm)
             1 -> HesperaDossier(hvm, vm.hand)
             else -> {
                 ProfileHeader(vm, AUTHOR_ME, vm.myProfile, editable = true)
@@ -335,7 +335,8 @@ private val KIND_TITLES = mapOf("язык" to "язык", "поворот" to "�
 
 /** Профиль Авроры: ядро, показания и блоки, текст которых открывается по нажатию. */
 @Composable
-fun AuroraDossier(vm: ChatViewModel) {
+fun AuroraDossier(vm: ChatViewModel, hvm: HesperaViewModel) {
+    androidx.compose.runtime.LaunchedEffect(Unit) { hvm.refreshProfile() }
     val now = System.currentTimeMillis()
     val msgs = vm.messages
     val first = msgs.firstOrNull()?.time ?: now
@@ -374,6 +375,7 @@ fun AuroraDossier(vm: ChatViewModel) {
             else text.lines().forEach { DetailLine("", it.removePrefix("- ")) }
             DetailHint("Меняется в настройках: Характер.")
         },
+    ) + duoItems(WHO_AURORA, hvm, accent) + listOf(
         DossierItem("core", "ЯДРО ПАМЯТИ", "${mem.core.size} записей", accent,
             preview = { MiniBars(CORE_KINDS.map { k -> mem.core.count { it.kind == k }.toFloat() }, accent) }
         ) {

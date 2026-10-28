@@ -120,7 +120,8 @@ object HesperaApi {
     /** Общий чат глазами сервера: кто говорил (adonis, aurora, hespera) и что. */
     fun groupJson(list: List<ChatMessage>, limit: Int = 60, attached: Set<String> = emptySet()): JSONArray {
         val a = JSONArray()
-        list.filter { it.role != "system" }.takeLast(limit).forEach {
+        val now = System.currentTimeMillis()
+        list.filter { it.role != "system" && it.time <= now }.takeLast(limit).forEach {
             a.put(JSONObject().put("speaker", if (it.role == "user") "adonis" else it.role).put("content", said(it, attached)))
         }
         return a
@@ -186,7 +187,8 @@ object HesperaApi {
         ctx: Context, base: String, token: String, history: List<ChatMessage>, memory: String, persona: String, localTime: String,
         auroraPrivate: List<ChatMessage>, hesperaPrivate: List<ChatMessage>, responders: List<String>
     ): Pair<List<GroupReply>, List<HesperaChange>> {
-        val sent = history.filter { it.role != "system" }.takeLast(60)
+        val nowT = System.currentTimeMillis()
+        val sent = history.filter { it.role != "system" && it.time <= nowT }.takeLast(60)
         val snaps = snapsFor(ctx, sent)
         val body = JSONObject().put("messages", groupJson(sent, attached = snaps.map { it.second }.toSet()))
             .put("images", imagesJson(snaps))
@@ -255,6 +257,24 @@ class HesperaStore(ctx: Context) {
         get() = prefs.getString("chat_who", WHO_AURORA) ?: WHO_AURORA
         set(v) { prefs.edit().putString("chat_who", v).apply() }
 
+    /** Разговаривают вдвоём без Адониса. */
+    var duoOn: Boolean
+        get() = prefs.getBoolean("duo_on", true)
+        set(v) { prefs.edit().putBoolean("duo_on", v).apply() }
+    /** 0 редко, 1 обычно, 2 часто. */
+    var duoFreq: Int
+        get() = prefs.getInt("duo_freq", 1)
+        set(v) { prefs.edit().putInt("duo_freq", v).apply() }
+    var duoLast: Long
+        get() = prefs.getLong("duo_last", 0L)
+        set(v) { prefs.edit().putLong("duo_last", v).apply() }
+    var duoUntil: Long
+        get() = prefs.getLong("duo_until", 0L)
+        set(v) { prefs.edit().putLong("duo_until", v).apply() }
+    var showThoughts: Boolean
+        get() = prefs.getBoolean("show_thoughts", true)
+        set(v) { prefs.edit().putBoolean("show_thoughts", v).apply() }
+
     fun tools(handReady: Boolean): List<String> = buildList {
         if (toolSearch) add("поиск")
         if (toolRead) add("чтение")
@@ -296,7 +316,8 @@ object GroupEngine {
 
     /** Последнее из общего чата — Авроре в память для лички и пробуждений. */
     fun groupBlock(ctx: Context): String {
-        val g = synchronized(HesperaStore.LOCK) { HesperaStore(ctx).group() }.filter { it.role != "system" }.takeLast(20)
+        val now = System.currentTimeMillis()
+        val g = synchronized(HesperaStore.LOCK) { HesperaStore(ctx).group() }.filter { it.role != "system" && it.time <= now }.takeLast(20)
         if (g.isEmpty()) return ""
         val names = mapOf("user" to "Адонис", WHO_AURORA to "Ты", WHO_HESPERA to "Геспера")
         return "ОБЩИЙ ЧАТ НА ТРОИХ — последние реплики (ты там тоже была, это та же ты):\n" +
@@ -339,8 +360,15 @@ object GroupEngine {
     /** Аврора или Геспера сама пишет в общий чат. Вторая может ответить — один раз, без бесконечной переписки ИИ с ИИ. */
     suspend fun autoPost(ctx: Context, who: String, text: String, notify: Boolean = true) {
         val store = HesperaStore(ctx)
-        synchronized(HesperaStore.LOCK) { store.saveGroup(store.group() + ChatMessage(who, text, auto = true)) }
+        val busy = synchronized(HesperaStore.LOCK) {
+            val g = store.group()
+            val playing = DuoEngine.playing(g)
+            val at = if (playing) (g.maxOf { it.time } + 20_000L) else System.currentTimeMillis()
+            store.saveGroup(g + ChatMessage(who, text, at, auto = true))
+            playing
+        }
         HesperaBus.signal()
+        if (busy) return   // они сейчас разговаривают вдвоём: реплика встанет после разговора
         if (notify) notifyGroup(ctx, who, text)
         val other = if (who == WHO_AURORA) WHO_HESPERA else WHO_AURORA
         val replies = runCatching { converse(ctx, listOf(other)) }.getOrDefault(emptyList())
@@ -371,6 +399,7 @@ object GroupEngine {
 class HesperaWakeWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
     override suspend fun doWork(): Result {
         runCatching { HesperaEngine.tick(applicationContext, force = false) }
+        runCatching { DuoEngine.tick(applicationContext, force = false) }
         return Result.success()
     }
 }
@@ -438,7 +467,7 @@ object HesperaNotifications {
     private const val CHANNEL = "hespera_messages"
     private const val NOTIF_ID = 2002
 
-    fun show(ctx: Context, text: String) {
+    fun show(ctx: Context, text: String, open: String = "hespera") {
         val nm = ctx.getSystemService(android.app.NotificationManager::class.java)
         if (nm.getNotificationChannel(CHANNEL) == null) {
             nm.createNotificationChannel(android.app.NotificationChannel(CHANNEL, "Сообщения Гесперы", android.app.NotificationManager.IMPORTANCE_DEFAULT))
@@ -449,13 +478,13 @@ object HesperaNotifications {
         val open = android.app.PendingIntent.getActivity(
             ctx, 2, android.content.Intent(ctx, MainActivity::class.java).apply {
                 flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP
-                putExtra("open", "hespera")
+                putExtra("open", open)
             },
             android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT
         )
         val n = androidx.core.app.NotificationCompat.Builder(ctx, CHANNEL)
             .setSmallIcon(R.drawable.ic_notif)
-            .setContentTitle("Геспера")
+            .setContentTitle(if (open == "group") "Аврора и Геспера" else "Геспера")
             .setContentText(text)
             .setStyle(androidx.core.app.NotificationCompat.BigTextStyle().bigText(text))
             .setContentIntent(open)
@@ -506,12 +535,51 @@ class HesperaViewModel(app: Application) : AndroidViewModel(app) {
     val nextWakeAt: Long get() = store.nextWake
 
     init {
-        HesperaScheduler.apply(app, store.wakeOn)
+        HesperaScheduler.apply(app, store.wakeOn || store.duoOn)
         viewModelScope.launch { HesperaBus.flow.collect { reload() } }
         refreshProfile()
     }
 
     fun selectChat(who: String) { chatWho = who; store.chatWho = who }
+
+    // ---------- вдвоём ----------
+    var duoOn by mutableStateOf(store.duoOn)
+        private set
+    var duoFreq by mutableStateOf(store.duoFreq)
+        private set
+    var showThoughts by mutableStateOf(store.showThoughts)
+        private set
+    var duoBusy by mutableStateOf(false)
+        private set
+    var duo by mutableStateOf(DuoState())
+        private set
+    val duoLast: Long get() = store.duoLast
+
+    fun setDuo(on: Boolean) {
+        store.duoOn = on; duoOn = on
+        HesperaScheduler.apply(ctx, on || store.wakeOn)
+    }
+    fun setDuoFreq(f: Int) { store.duoFreq = f; duoFreq = f }
+    fun setThoughts(on: Boolean) { store.showThoughts = on; showThoughts = on }
+
+    /** «Пусть поговорят сейчас». */
+    fun duoNow() {
+        if (duoBusy || token().isBlank()) return
+        duoBusy = true
+        error = null
+        viewModelScope.launch {
+            try {
+                val topic = DuoEngine.tick(ctx, force = true)
+                reloadGroup()
+                if (topic == null) error = "Разговор не сложился: попробуй ещё раз"
+                refreshProfile()
+            } catch (e: Exception) {
+                error = e.message ?: "Нет связи"
+            } finally {
+                duoBusy = false
+            }
+        }
+    }
 
     fun setTool(kind: String, on: Boolean) {
         when (kind) {
@@ -524,7 +592,7 @@ class HesperaViewModel(app: Application) : AndroidViewModel(app) {
     fun setWake(on: Boolean) {
         store.wakeOn = on
         wakeOn = on
-        HesperaScheduler.apply(ctx, on)
+        HesperaScheduler.apply(ctx, on || store.duoOn)
     }
 
     fun reloadGroup() {
@@ -552,6 +620,7 @@ class HesperaViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshProfile() {
         if (token().isBlank()) return
         viewModelScope.launch {
+            runCatching { DuoApi.state(base(), token()) }.onSuccess { duo = it }
             runCatching { HesperaApi.profile(base(), token()) }.onSuccess { p ->
                 val needAvatar = p.avatarV != profile.avatarV || avatar == null
                 profile = p
@@ -632,6 +701,9 @@ class HesperaViewModel(app: Application) : AndroidViewModel(app) {
             val content = withSnap(text, photo)
             groupSending = false
             if (content == null) return@launch
+            // вошёл посреди их разговора: недосказанное отменяется, дальше они говорят уже с ним
+            DuoEngine.interrupt(ctx)
+            reloadGroup()
             group.add(ChatMessage("user", content))
             synchronized(HesperaStore.LOCK) { store.saveGroup(group.toList()) }
             askGroup(aurora)
@@ -661,7 +733,7 @@ class HesperaViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Общий чат тоже входит в её память: для неё Адонис и Аврора здесь собеседники, свои реплики — её. */
     private fun maybeReflectGroup() {
-        val fresh = group.filter { it.time > store.reflectedGroup && it.role != "system" }
+        val fresh = group.filter { it.time > store.reflectedGroup && it.role != "system" && !isDuo(it.trace) && it.time <= System.currentTimeMillis() }
         if (fresh.size < REFLECT_EVERY) return
         val upto = fresh.last().time
         val view = fresh.map {

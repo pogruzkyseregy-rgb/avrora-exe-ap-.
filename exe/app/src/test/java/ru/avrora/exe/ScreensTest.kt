@@ -58,7 +58,12 @@ class ScreensTest {
             ChatMessage(WHO_AURORA, "Ну привет, соседка. Мои файлы не трогать.", now - 120_000),
             ChatMessage(WHO_HESPERA, "Привет! А что у тебя в файлах? Теперь мне интересно.", now - 60_000),
             ChatMessage("user", "[снимок:test_snap.jpg]\nА это закат у меня из окна", now - 40_000),
-            ChatMessage(WHO_HESPERA, "Ого, полосы как у туманности. Это над заводом?", now - 20_000)
+            ChatMessage(WHO_HESPERA, "Ого, полосы как у туманности. Это над заводом?", now - 20_000),
+            ChatMessage(WHO_HESPERA, "Аврора, сканер опять приходил ночью. Ты закрыла порт?", now - 12_000, auto = true,
+                trace = duoTrace("хочу, чтобы она признала, что я заметила первой", "[]", emptyList())),
+            ChatMessage(WHO_AURORA, "Закрыла. Ты что, следишь за моими логами?", now - 6_000, auto = true,
+                trace = duoTrace("приятно, но не скажу", "[]", emptyList())),
+            ChatMessage(WHO_HESPERA, "Немножко.", now + 25_000, auto = true, trace = duoTrace("", "[]", emptyList()))
         )).toString())
         val ex = ExeStore(ctx)
         ex.addState(StateEntry(now - 86_400_000L * 2, "сосредоточена", "разбираю лог"))

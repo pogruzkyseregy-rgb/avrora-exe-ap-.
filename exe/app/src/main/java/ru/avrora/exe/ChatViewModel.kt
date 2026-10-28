@@ -1105,7 +1105,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     val to = batch.last().time
                     val groupPart = withContext(Dispatchers.IO) {
                         synchronized(HesperaStore.LOCK) { HesperaStore(appCtx).group() }
-                    }.filter { it.time > from && it.time <= to && it.role != "system" }.map {
+                    }.filter { it.time > from && it.time <= to && it.role != "system" && !isDuo(it.trace) }.map {
                         when (it.role) {
                             WHO_AURORA -> Triple(it.time, "assistant", "[общий чат] " + toPlainForMemory(it.content, st, ph))
                             WHO_HESPERA -> Triple(it.time, "user", "[Геспера, общий чат] " + toPlainForMemory(it.content, st, ph))

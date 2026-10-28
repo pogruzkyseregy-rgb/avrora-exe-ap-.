@@ -559,7 +559,7 @@ class HesperaViewModel(app: Application) : AndroidViewModel(app) {
         store.duoOn = on; duoOn = on
         HesperaScheduler.apply(ctx, on || store.wakeOn)
     }
-    fun setDuoFreq(f: Int) { store.duoFreq = f; duoFreq = f }
+    fun pickDuoFreq(f: Int) { store.duoFreq = f; duoFreq = f }
     fun setThoughts(on: Boolean) { store.showThoughts = on; showThoughts = on }
 
     /** «Пусть поговорят сейчас». */

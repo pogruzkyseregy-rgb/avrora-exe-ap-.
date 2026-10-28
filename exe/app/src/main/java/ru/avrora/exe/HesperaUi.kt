@@ -389,7 +389,7 @@ private fun DuoSettingsDialog(hvm: HesperaViewModel, onClose: () -> Unit) {
                         Text(
                             "$label · ${DuoEngine.PER_DAY[i]}/д", color = if (on) TextMain else TextDim, fontSize = 12.sp,
                             modifier = Modifier.clip(panelShape()).background(if (on) Violet.copy(alpha = 0.18f) else Terminal)
-                                .border(1.dp, if (on) Violet else Edge, panelShape()).clickable { hvm.setDuoFreq(i) }
+                                .border(1.dp, if (on) Violet else Edge, panelShape()).clickable { hvm.pickDuoFreq(i) }
                                 .padding(horizontal = 10.dp, vertical = 6.dp)
                         )
                     }

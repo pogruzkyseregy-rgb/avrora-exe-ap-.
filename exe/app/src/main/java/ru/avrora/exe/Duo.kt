@@ -157,7 +157,7 @@ object DuoEngine {
         HesperaBus.signal()
         val first = out.first()
         HesperaNotifications.show(ctx, (if (first.role == WHO_AURORA) "Аврора" else "Геспера") + " заговорила с " +
-            (if (first.role == WHO_AURORA) "Гесперой" else "Авророй") + ": " + first.content, open = "group")
+            (if (first.role == WHO_AURORA) "Гесперой" else "Авророй") + ": " + first.content, target = "group")
         return t.topic.ifBlank { first.content.take(60) }
     }
 

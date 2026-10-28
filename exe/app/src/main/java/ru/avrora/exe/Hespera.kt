@@ -467,7 +467,7 @@ object HesperaNotifications {
     private const val CHANNEL = "hespera_messages"
     private const val NOTIF_ID = 2002
 
-    fun show(ctx: Context, text: String, open: String = "hespera") {
+    fun show(ctx: Context, text: String, target: String = "hespera") {
         val nm = ctx.getSystemService(android.app.NotificationManager::class.java)
         if (nm.getNotificationChannel(CHANNEL) == null) {
             nm.createNotificationChannel(android.app.NotificationChannel(CHANNEL, "Сообщения Гесперы", android.app.NotificationManager.IMPORTANCE_DEFAULT))
@@ -478,13 +478,13 @@ object HesperaNotifications {
         val open = android.app.PendingIntent.getActivity(
             ctx, 2, android.content.Intent(ctx, MainActivity::class.java).apply {
                 flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP
-                putExtra("open", open)
+                putExtra("open", target)
             },
             android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT
         )
         val n = androidx.core.app.NotificationCompat.Builder(ctx, CHANNEL)
             .setSmallIcon(R.drawable.ic_notif)
-            .setContentTitle(if (open == "group") "Аврора и Геспера" else "Геспера")
+            .setContentTitle(if (target == "group") "Аврора и Геспера" else "Геспера")
             .setContentText(text)
             .setStyle(androidx.core.app.NotificationCompat.BigTextStyle().bigText(text))
             .setContentIntent(open)

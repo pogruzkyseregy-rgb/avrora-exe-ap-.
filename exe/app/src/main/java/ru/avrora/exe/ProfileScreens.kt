@@ -125,22 +125,13 @@ private fun PostCard(vm: ChatViewModel, post: PostItem) {
         }
         if (post.text.isNotBlank()) Text(post.text, color = TextMain, fontSize = 15.sp, lineHeight = 21.sp)
         if (post.photo.isNotBlank()) PostPhoto(vm, post.photo)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (hers) {
-                // Её пост: лайк ставлю я
-                Text(
-                    if (post.likedByMe) "♥" else "♡",
-                    color = if (post.likedByMe) Glow else TextDim,
-                    fontSize = 22.sp,
-                    modifier = Modifier.clickable { vm.toggleLike(post.id) }.padding(end = 8.dp)
-                )
-                Text(if (post.likedByMe) "ты поставил лайк" else "нравится?", color = TextDim, fontSize = 12.sp)
-            } else {
-                // Мой пост: лайк ставит она сама
-                Text("♥", color = if (post.likedByHer) Glow else Edge, fontSize = 22.sp, modifier = Modifier.padding(end = 8.dp))
-                Text(if (post.likedByHer) "Аврора поставила лайк" else "лайка от Авроры пока нет", color = TextDim, fontSize = 12.sp)
-            }
+        // Её пост: лайк ставлю я; мой пост: лайки ставят они сами
+        val others = buildList {
+            if (!hers && post.likedByHer) add("Аврора")
+            if (post.likedByHesp) add("Геспера")
         }
+        LikeRow(accent, if (hers) post.likedByMe else null, others) { vm.toggleLike(post.id) }
+        PostComments(post.comments, accent, onSend = { vm.addComment(post.id, it) }, onDelete = { vm.deleteComment(post.id, it.at) })
         if (confirmDelete) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -287,9 +278,9 @@ fun ProfilesScreen(vm: ChatViewModel, onBack: () -> Unit) {
 
 @Composable
 fun FeedScreen(vm: ChatViewModel, hvm: HesperaViewModel, onGear: () -> Unit) {
-    androidx.compose.runtime.LaunchedEffect(Unit) { hvm.refreshProfile() }
+    androidx.compose.runtime.LaunchedEffect(Unit) { vm.reloadExe(); hvm.refreshProfile() }
     TabPage("ЛЕНТА", onGear) {
-        Hint("Страницы видите только вы трое. Аврора и Геспера ведут свои сами: статус, посты, лайки. Что ты здесь пишешь, Аврора видит в следующем разговоре.")
+        Hint("Страницы видите только вы трое. Аврора и Геспера ведут свои сами: статус, посты, лайки, комментарии. Твои посты и комментарии они видят в следующем разговоре.")
         PostComposer(vm)
         // общая лента: посты Авроры и твои (живут в приложении) и посты Гесперы (живут на сервере), по времени
         val all = (vm.posts.map { FeedEntry(it.at, it, null) } +
@@ -305,6 +296,7 @@ fun FeedScreen(vm: ChatViewModel, hvm: HesperaViewModel, onGear: () -> Unit) {
 fun ProfileTabScreen(vm: ChatViewModel, hvm: HesperaViewModel, onWrite: (String) -> Unit = {}, onGear: () -> Unit) {
     var tab by rememberSaveable { mutableStateOf(0) }   // 0 Аврора, 1 Геспера, 2 я
     var core by rememberSaveable { mutableStateOf(false) }   // открыто ядро с графиками
+    androidx.compose.runtime.LaunchedEffect(Unit) { vm.reloadExe() }
     TabPage("ПРОФИЛЬ", onGear) {
         ProfileSwitch(tab, listOf("АВРОРА" to Glow, "ГЕСПЕРА" to HespColor, "Я" to Violet)) { tab = it; core = false }
         when (tab) {
@@ -339,7 +331,7 @@ fun AuroraSocial(vm: ChatViewModel, hvm: HesperaViewModel, onCore: () -> Unit, o
         handle = "@avrora.exe · лиса-ИИ",
         status = vm.herProfile.status,
         about = state?.let { "сейчас: ${it.name}" + if (it.why.isNotBlank()) " — ${it.why}" else "" } ?: "",
-        counters = listOf("постов" to "${herPosts.size}", "♥" to "${herPosts.count { it.likedByMe }}", "дней" to "$days"),
+        counters = listOf("постов" to "${herPosts.size}", "♥" to "${herPosts.count { it.likedByMe } + herPosts.count { it.likedByHesp }}", "дней" to "$days"),
         actions = listOf(
             SocialAction("Ядро", "◎", onCore),
             SocialAction("Папка", "▤") { showFiles = true },

@@ -23,7 +23,7 @@ val SILENCE_RE = Regex("""\[молчу\s*\]""", RegexOption.IGNORE_CASE)
 /**
  * Все маркеры в тексте. Группы: 1-2 вложение (вид, id), 3 секунды паузы,
  * 4-5 состояние (слово, причина), 6-7 «напишу» (когда, тема), 8-9 след (вид, текст), 10 её цитата-ответ,
- * 11 пост, 12 статус, 13 лайк, 14 аватар, 15 оставить, 16 в цитаты, 17 цитата №.
+ * 11 пост, 12 статус, 13 лайк, 14 аватар, 15 оставить, 16 в цитаты, 17 цитата №, …, 28-29 коммент (слова, текст).
  */
 private val ALL_RE = Regex(
     """\[(?:(стикер|фото|снимок|sticker|photo)\s*:\s*([A-Za-z0-9_.\-]+)""" +
@@ -42,7 +42,8 @@ private val ALL_RE = Regex(
         """|игра\s*:\s*(приглашение|принять|отказать|итог)(?:\s*\|\s*([^\]]{0,300}))?""" +
         """|будильник\s*:\s*([^\]|]{1,40})(?:\|\s*([^\]]{0,200}))?""" +
         """|медиа\s*:\s*([A-Za-z0-9_.\-]{1,80})\s*(?:\|\s*([^\]]{0,80}))?""" +
-        """|(голос|аудио)\s*:\s*([A-Za-z0-9_.\-]{1,80})\s*(?:\|\s*([^\]|]{0,4000}))?(?:\|\s*([^\]]{0,4000}))?)\s*\]""",
+        """|(голос|аудио)\s*:\s*([A-Za-z0-9_.\-]{1,80})\s*(?:\|\s*([^\]|]{0,4000}))?(?:\|\s*([^\]]{0,4000}))?""" +
+        """|коммент\s*:\s*([^\]|]{1,200})\|\s*([^\]]{1,600}))\s*\]""",
     RegexOption.IGNORE_CASE
 )
 
@@ -62,6 +63,8 @@ sealed class Part {
     data class Post(val text: String, val photoId: String) : Part()
     data class Status(val text: String) : Part()
     data class Like(val snippet: String) : Part()
+    /** Её комментарий под постом: слова из поста и сам комментарий. */
+    data class Comment(val snippet: String, val text: String) : Part()
     data class Avatar(val photoId: String) : Part()
     data class Keep(val desc: String) : Part()
     data class SaveQuote(val text: String) : Part()
@@ -114,6 +117,7 @@ fun parseParts(content: String): List<Part> {
             g[20].isNotEmpty() -> out.add(Part.Alarm(g[20].trim(), g[21].trim()))
             g[22].isNotEmpty() -> out.add(Part.Media(g[22].trim(), g[23].trim()))
             g[24].isNotEmpty() -> out.add(Part.Voice(g[24].lowercase() == "голос", g[25].trim(), g[26].trim(), g[27].trim()))
+            g[28].isNotEmpty() -> out.add(Part.Comment(g[28].trim(), g[29].trim()))
             else -> out.add(Part.Pause((g[3].toIntOrNull() ?: 2).coerceIn(1, 8)))
         }
         last = m.range.last + 1

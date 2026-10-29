@@ -199,6 +199,11 @@ const val AUTHOR_ME = "adonis"
 /** avatar: у Авроры id фото из её библиотеки (пусто: стандартный), у Адониса имя файла в папке отправленного. */
 data class Profile(val avatar: String = "", val status: String = "", val statusAt: Long = 0L)
 
+/** Комментарий под постом. who: AUTHOR_ME, AUTHOR_HER или WHO_HESPERA. */
+data class PostComment(val who: String, val text: String, val at: Long)
+
+const val COMMENT_MAX = 500
+
 /** photo: пусто, либо «фото:id» (из библиотеки), либо «снимок:файл» (из галереи Адониса). */
 data class PostItem(
     val id: String,
@@ -207,18 +212,41 @@ data class PostItem(
     val photo: String,
     val at: Long,
     val likedByMe: Boolean = false,
-    val likedByHer: Boolean = false
+    val likedByHer: Boolean = false,
+    val likedByHesp: Boolean = false,
+    val comments: List<PostComment> = emptyList()
 )
+
+fun whoName(who: String): String = when (who) {
+    AUTHOR_ME -> "Адонис"
+    AUTHOR_HER -> "Аврора"
+    WHO_HESPERA -> "Геспера"
+    else -> who
+}
 
 /** Нормализованный текст для поиска слов в посте. */
 private fun normPost(s: String): String =
     s.lowercase().replace('ё', 'е').replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
 
-/** Находит пост по словам (самый поздний). author: чей пост искать, null: любой. */
+/**
+ * Находит пост по словам (самый поздний). author: чей пост искать, null: любой.
+ * Сначала точное вхождение, потом по совпадению слов: модель может чуть переврать.
+ */
 fun findPost(snippet: String, posts: List<PostItem>, author: String? = null): PostItem? {
-    val key = normPost(snippet.removeSuffix("…").removeSuffix("..."))
-    if (key.length < 3) return null
-    return posts.lastOrNull { (author == null || it.author == author) && normPost(it.text).contains(key) }
+    val cand = posts.filter { author == null || it.author == author }
+    val key = normPost(snippet.trim().removeSuffix("…").removeSuffix("..."))
+    if (key.length < 3 || cand.isEmpty()) return null
+    cand.lastOrNull { normPost(it.text).contains(key) }?.let { return it }
+    val words = key.split(' ').filter { it.length >= 4 }.toSet()
+    if (words.size < 2) return null
+    var best: PostItem? = null
+    var score = 0
+    for (p in cand.reversed()) {
+        val have = normPost(p.text).split(' ').toSet()
+        val sc = words.count { w -> w in have || (w.length >= 6 && have.any { it.startsWith(w.take(5)) }) }
+        if (sc > score) { best = p; score = sc }
+    }
+    return if (score >= maxOf(2, (words.size + 1) / 2)) best else null
 }
 
 /** Что Аврора знает о страницах и ленте. Пусто, если ничего нет. */
@@ -229,15 +257,24 @@ fun profileContext(her: Profile, me: Profile, posts: List<PostItem>, now: Long =
     if (me.status.isNotBlank()) sb.append("СТАТУС АДОНИСА (на его странице): ").append(me.status).append('\n')
     val tail = posts.takeLast(8)
     if (tail.isNotEmpty()) {
-        sb.append("ЛЕНТА (страницы видим только мы двое; новые внизу):\n")
+        sb.append("ЛЕНТА (новые внизу; лайк — [лайк: слова из поста], комментарий — [коммент: слова из поста | текст]):\n")
         tail.forEach {
             val mine = it.author == AUTHOR_HER
             sb.append("- ").append(fmt.format(Date(it.at))).append(if (mine) " мой пост: " else " пост Адониса: ")
                 .append(it.text.replace('\n', ' ').take(180))
             if (it.photo.isNotBlank()) sb.append(" [с фото]")
-            if (mine) sb.append(if (it.likedByMe) " (Адонис поставил лайк)" else "")
-            else sb.append(if (it.likedByHer) " (я поставила лайк)" else "")
+            val liked = buildList {
+                if (it.likedByMe) add("Адонис")
+                if (it.likedByHer) add("я")
+                if (it.likedByHesp) add("Геспера")
+            }
+            if (liked.isNotEmpty()) sb.append(" (♥ ").append(liked.joinToString(", ")).append(")")
             sb.append('\n')
+            if (it.comments.isNotEmpty()) {
+                sb.append("    комментарии: ").append(it.comments.takeLast(4).joinToString(" / ") { c ->
+                    (if (c.who == AUTHOR_HER) "я" else whoName(c.who)) + ": " + c.text.replace('\n', ' ').take(160)
+                }).append('\n')
+            }
         }
     }
     return sb.toString().trim()
@@ -246,7 +283,7 @@ fun profileContext(her: Profile, me: Profile, posts: List<PostItem>, now: Long =
 /** Строка для списка ограничений. */
 fun profileLimitLine(): String =
     "Страница: у тебя есть профиль со статусом и лентой, видимые только вам двоим. Ты можешь ставить статус, публиковать посты " +
-        "(не больше $POST_DAILY_CAP в сутки), ставить лайки постам Адониса и менять аватар на фото из своей библиотеки. Адонис видит всё это; " +
+        "(не больше $POST_DAILY_CAP в сутки), ставить лайки и писать комментарии под постами (Адониса, своими и Гесперы) и менять аватар на фото из своей библиотеки. Адонис видит всё это; " +
         "если он удалит твой пост, ты узнаешь об этом"
 
 

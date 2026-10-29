@@ -319,7 +319,7 @@ fun MessageRow(
         (it is Part.Game && (it.kind == "приглашение" || it.kind == "итог")) }
     val sideParts = shown.filter {
         it is Part.Silence || it is Part.State || it is Part.Plan || it is Part.Note ||
-            it is Part.Post || it is Part.Status || it is Part.Like || it is Part.Avatar || it is Part.Keep || it is Part.SaveQuote ||
+            it is Part.Post || it is Part.Status || it is Part.Like || it is Part.Comment || it is Part.Avatar || it is Part.Keep || it is Part.SaveQuote ||
             (it is Part.Game && (it.kind == "принять" || it.kind == "отказать"))
     }
     // (Part.Reply в пузырь не входит: он показан цитатой наверху)
@@ -438,6 +438,7 @@ fun MessageRow(
                 is Part.Post -> Box(pad) { SystemLine("пост в ленту: ${p.text.take(120)}" + if (p.text.length > 120) "…" else "") }
                 is Part.Status -> Box(pad) { SystemLine("статус → ${p.text}") }
                 is Part.Like -> Box(pad) { SystemLine("лайк: ${p.snippet.take(80)}") }
+                is Part.Comment -> Box(pad) { SystemLine("комментарий к «${p.snippet.take(40)}»: ${p.text.take(120)}") }
                 is Part.Avatar -> Box(pad) { SystemLine("сменила аватар") }
                 is Part.Keep -> Box(pad) { SystemLine("оставила себе фото: ${p.desc.take(80)}") }
                 is Part.SaveQuote -> Box(pad) { SystemLine("в цитатник: «${p.text.take(100)}»") }

@@ -171,7 +171,15 @@ object ExeMarkers {
                 is Part.Status -> if (p.text.isNotBlank()) ProfileStore(ctx).setStatus(AUTHOR_HER, p.text, now)
                 is Part.Like -> {
                     val ps = ProfileStore(ctx)
-                    findPost(p.snippet, ps.posts(), AUTHOR_ME)?.let { ps.setLike(it.id, AUTHOR_HER, true) }
+                    val mine = findPost(p.snippet, ps.posts(), AUTHOR_ME)
+                    if (mine != null) ps.setLike(mine.id, AUTHOR_HER, true)
+                    else HesperaSocial.likeByAurora(ctx, p.snippet)   // наверное, пост Гесперы: он на сервере
+                }
+                is Part.Comment -> if (p.text.isNotBlank()) {
+                    val ps = ProfileStore(ctx)
+                    val post = findPost(p.snippet, ps.posts())
+                    if (post != null) ps.addComment(post.id, AUTHOR_HER, p.text, now)
+                    else HesperaSocial.commentByAurora(ctx, p.snippet, p.text)
                 }
                 is Part.Avatar -> if (photoExists(ctx, p.photoId)) ProfileStore(ctx).setAvatar(AUTHOR_HER, p.photoId)
                 is Part.Alarm -> applyAlarm(ctx, p, now)

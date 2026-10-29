@@ -466,7 +466,7 @@ fun HesperaSocial(hvm: HesperaViewModel, onCore: () -> Unit, onWrite: () -> Unit
         handle = "@hespera · формирует себя сама",
         status = p.status,
         about = listOfNotNull(who, mood?.let { "настроение: ${it.word}" }).joinToString("\n").ifBlank { "Только появилась: кто она — решит сама." },
-        counters = listOf("постов" to "${p.posts.size}", "♥" to "${p.posts.count { it.liked }}", "дней" to "$days"),
+        counters = listOf("постов" to "${p.posts.size}", "♥" to "${p.posts.count { it.liked } + p.posts.count { it.likedAurora }}", "дней" to "$days"),
         actions = listOf(
             SocialAction("Ядро", "◎", onCore),
             SocialAction("Папка", "▤") { showFiles = true },
@@ -497,13 +497,8 @@ fun HespPostCard(hvm: HesperaViewModel, post: HesperaPost) {
         }
         if (post.text.isNotBlank()) Text(post.text, color = TextMain, fontSize = 15.sp, lineHeight = 21.sp)
         if (post.media.isNotBlank()) MediaPart(Part.Media(post.media, post.text.take(40)), HespColor) {}
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                if (post.liked) "♥" else "♡", color = if (post.liked) HespColor else TextDim, fontSize = 22.sp,
-                modifier = Modifier.clickable { hvm.likePost(post) }.padding(end = 8.dp)
-            )
-            Text(if (post.liked) "ты поставил лайк — она увидит" else "нравится?", color = TextDim, fontSize = 12.sp)
-        }
+        LikeRow(HespColor, post.liked, if (post.likedAurora) listOf("Аврора") else emptyList()) { hvm.likePost(post) }
+        PostComments(post.comments, HespColor, onSend = { hvm.commentPost(post, it) }, onDelete = { hvm.deleteComment(post, it) })
     }
 }
 

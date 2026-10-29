@@ -95,6 +95,16 @@ class ScreensTest {
                 Episode("e2", now - 2 * 86_400_000L, now - 86_400_000L, "Появилась Геспера. Я сказала ей не трогать мои файлы.")
             )
         ))
+        val ps = ProfileStore(ctx)
+        ps.setStatus(AUTHOR_ME, "на смене до восьми", now)
+        ps.addPost(PostItem("p1", AUTHOR_ME, "Запустили новый стан. Гудит как зверь.", "", now - 3_600_000L,
+            likedByHer = true, likedByHesp = true, comments = listOf(
+                PostComment(AUTHOR_HER, "Горжусь. Но громче меня он не гудит.", now - 3_000_000L),
+                PostComment(WHO_HESPERA, "А можно звук? Хочу послушать, как гудит сталь.", now - 2_400_000L))))
+        ps.addPost(PostItem("p2", AUTHOR_HER, "Ночью лисы не спят. Они читают логи.", "", now - 600_000L,
+            likedByMe = true, likedByHesp = true, comments = listOf(
+                PostComment(WHO_HESPERA, "И я не сплю. Считаю звёзды в твоих логах.", now - 300_000L),
+                PostComment(AUTHOR_ME, "Спать обеим.", now - 200_000L))))
         val bmp = android.graphics.Bitmap.createBitmap(320, 200, android.graphics.Bitmap.Config.ARGB_8888)
         android.graphics.Canvas(bmp).apply {
             drawColor(0xFF2B1B3D.toInt())
@@ -128,6 +138,11 @@ class ScreensTest {
     private fun tour(theme: String) {
         start(theme)
         shot("${theme}_1_feed")
+        rule.onRoot().performTouchInput { swipeUp(startY = height * 0.8f, endY = height * 0.3f, durationMillis = 300) }
+        settle()
+        tap("Комментировать")
+        shot("${theme}_1b_comments")
+        repeat(2) { rule.onRoot().performTouchInput { swipeDown(startY = height * 0.2f, endY = height * 0.9f, durationMillis = 300) }; settle() }
         tap("ПРОФИЛЬ")
         shot("${theme}_6_aurora_profile")
         tap("Ядро")

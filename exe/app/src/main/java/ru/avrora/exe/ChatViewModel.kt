@@ -141,6 +141,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         runDuePlans()
         refreshHand()
         viewModelScope.launch { InboxBus.flow.collect { drainInbox() } }
+        viewModelScope.launch { PageBus.flow.collect { reloadExe() } }
     }
 
     // ---------- консоль: состояние, время, следы, права ----------
@@ -303,6 +304,16 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     fun toggleLike(id: String) {
         val p = posts.firstOrNull { it.id == id } ?: return
         profileStore.setLike(id, AUTHOR_ME, !p.likedByMe)
+        reloadExe()
+    }
+
+    /** Мой комментарий под постом (моим или Авроры). Аврора и Геспера увидят его в следующем разговоре. */
+    fun addComment(id: String, text: String) {
+        if (profileStore.addComment(id, AUTHOR_ME, text) != null) reloadExe()
+    }
+
+    fun deleteComment(id: String, at: Long) {
+        profileStore.removeComment(id, AUTHOR_ME, at)
         reloadExe()
     }
 

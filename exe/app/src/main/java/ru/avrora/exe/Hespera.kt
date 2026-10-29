@@ -38,7 +38,15 @@ const val WHO_GROUP = "group"
 data class HesperaChange(val kind: String, val field: String, val value: String, val why: String)
 
 data class HesperaField(val field: String, val value: String, val why: String, val at: Double)
-data class HesperaPost(val id: Long, val at: Double, val text: String, val media: String = "", val liked: Boolean = false)
+data class HesperaPost(
+    val id: Long, val at: Double, val text: String, val media: String = "", val liked: Boolean = false,
+    val likedAurora: Boolean = false, val comments: List<PostComment> = emptyList()
+)
+
+/** Комментарии с сервера: время там в секундах. */
+fun commentsFromJson(a: JSONArray?): List<PostComment> =
+    if (a == null) emptyList() else (0 until a.length()).map { a.getJSONObject(it) }
+        .map { PostComment(it.optString("who"), it.optString("text"), (it.optDouble("at", 0.0) * 1000).toLong()) }
 data class HesperaProfile(
     val status: String = "",
     val born: Double = 0.0,
@@ -77,6 +85,8 @@ fun changeLabel(c: HesperaChange): String = when (c.kind) {
     "статус" -> "статус: ${c.value}"
     "пост" -> "пост на странице: ${c.value}"
     "аватар" -> "сменила аватар"
+    "лайк" -> if (c.field.isBlank()) "лайк не поставлен: ${c.value}" else "лайкнула пост: ${c.value}"
+    "коммент" -> "комментарий" + (if (c.why.isNotBlank()) " ${c.why}" else "") + ": ${c.value}"
     else -> "${c.kind}: ${c.value}"
 }
 
@@ -132,11 +142,12 @@ object HesperaApi {
     data class Reply(val text: String, val changes: List<HesperaChange>, val trace: String, val toGroup: List<String>)
 
     suspend fun chat(ctx: Context, base: String, token: String, history: List<ChatMessage>, group: List<ChatMessage>, tools: List<String>, localTime: String): Reply {
+        val page = ProfileStore(ctx).pageJson()
         val sent = history.filter { it.role == "user" || it.role == "assistant" }.takeLast(60)
         val snaps = snapsFor(ctx, sent)
         val body = JSONObject().put("messages", msgsJson(sent, attached = snaps.map { it.second }.toSet()))
             .put("images", imagesJson(snaps)).put("tools", toolsJson(tools)).put("local_time", localTime)
-            .put("group", groupJson(group, 20))
+            .put("group", groupJson(group, 20)).put("page", page)
         val r = AuroraApi.post(base, "/hespera/chat", token, body)
         return Reply(r.optString("reply"), changesFromJson(r.optJSONArray("changes")), r.optJSONArray("trace")?.toString() ?: "",
             strings(r.optJSONArray("to_group")))
@@ -144,9 +155,10 @@ object HesperaApi {
 
     data class Wake(val message: String?, val wakeMin: Int?, val changes: List<HesperaChange>, val trace: String, val toGroup: List<String>)
 
-    suspend fun wake(base: String, token: String, history: List<ChatMessage>, group: List<ChatMessage>, tools: List<String>, localTime: String, gapMin: Long, unanswered: Int): Wake {
+    suspend fun wake(base: String, token: String, history: List<ChatMessage>, group: List<ChatMessage>, tools: List<String>, localTime: String, gapMin: Long, unanswered: Int,
+                     page: JSONObject = JSONObject()): Wake {
         val body = JSONObject().put("messages", msgsJson(history, 50)).put("tools", toolsJson(tools)).put("local_time", localTime)
-            .put("gap_minutes", gapMin).put("unanswered", unanswered).put("group", groupJson(group, 20))
+            .put("gap_minutes", gapMin).put("unanswered", unanswered).put("group", groupJson(group, 20)).put("page", page)
         val r = AuroraApi.post(base, "/hespera/wake", token, body)
         val wake = if (r.has("wake_min")) r.optInt("wake_min", 0).takeIf { it > 0 } else null
         val msg = if (r.optBoolean("skip", false)) null else r.optString("message", "").trim().ifBlank { null }
@@ -169,13 +181,21 @@ object HesperaApi {
         val changes = changesFromJson(ch)
         val times = if (ch == null) emptyList() else (0 until ch.length()).map { ch.getJSONObject(it).optDouble("at") }
         val posts = r.optJSONArray("posts")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) }
-            .map { HesperaPost(it.optLong("id"), it.optDouble("at"), it.optString("text"), it.optString("media"), it.optBoolean("liked")) } } ?: emptyList()
+            .map { HesperaPost(it.optLong("id"), it.optDouble("at"), it.optString("text"), it.optString("media"), it.optBoolean("liked"),
+                it.optBoolean("liked_aurora"), commentsFromJson(it.optJSONArray("comments"))) } } ?: emptyList()
         return HesperaProfile(r.optString("status"), r.optDouble("born"), fields, lists, changes, times, posts,
             r.optInt("notes"), r.optInt("episodes"), r.optLong("avatar_v"))
     }
 
     suspend fun like(base: String, token: String, id: Long, on: Boolean) {
         AuroraApi.post(base, "/hespera/like", token, JSONObject().put("id", id).put("on", on))
+    }
+
+    /** Комментарий под её постом (или удаление своего: deleteAt — время комментария). Возвращает комментарии поста. */
+    suspend fun comment(base: String, token: String, id: Long, text: String, who: String = AUTHOR_ME, snippet: String = "", deleteAt: Long = 0L): List<PostComment> {
+        val body = JSONObject().put("id", id).put("text", text).put("who", who).put("snippet", snippet)
+        if (deleteAt > 0) body.put("delete_at", deleteAt / 1000.0)
+        return commentsFromJson(AuroraApi.post(base, "/hespera/comment", token, body).optJSONArray("comments"))
     }
 
     /** Аватар, который она выбрала себе сама. null — ещё не выбрала. */
@@ -185,7 +205,7 @@ object HesperaApi {
         return if (b64.isBlank()) null else android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
     }
 
-    data class GroupReply(val who: String, val text: String, val private: List<String> = emptyList())
+    data class GroupReply(val who: String, val text: String, val private: List<String> = emptyList(), val markers: List<String> = emptyList())
 
     suspend fun group(
         ctx: Context, base: String, token: String, history: List<ChatMessage>, memory: String, persona: String, localTime: String,
@@ -198,10 +218,10 @@ object HesperaApi {
             .put("images", imagesJson(snaps))
             .put("memory", memory).put("persona", persona).put("local_time", localTime)
             .put("aurora_private", msgsJson(auroraPrivate, 15)).put("hespera_private", msgsJson(hesperaPrivate, 15))
-            .put("responders", JSONArray(responders))
+            .put("responders", JSONArray(responders)).put("page", ProfileStore(ctx).pageJson())
         val r = AuroraApi.post(base, "/group/chat", token, body)
         val replies = r.optJSONArray("replies")?.let { arr -> (0 until arr.length()).map { arr.getJSONObject(it) }
-            .map { GroupReply(it.optString("who"), it.optString("text"), strings(it.optJSONArray("private"))) } } ?: emptyList()
+            .map { GroupReply(it.optString("who"), it.optString("text"), strings(it.optJSONArray("private")), strings(it.optJSONArray("markers"))) } } ?: emptyList()
         return Pair(replies, changesFromJson(r.optJSONArray("changes")))
     }
 }
@@ -369,8 +389,11 @@ object GroupEngine {
             store.saveGroup(g)
         }
         replies.forEach { r -> r.private.forEach { toPrivate(ctx, r.who, it) } }
+        // лайки и комментарии к постам: Авроры — её маркерами, Гесперы — из перемен
+        replies.filter { it.who == WHO_AURORA && it.markers.isNotEmpty() }.forEach { ExeMarkers.apply(ctx, it.markers.joinToString("\n"), now) }
+        PageSync.apply(ctx, changes)
         HesperaBus.signal()
-        replies
+        replies.filter { it.text.isNotBlank() || it.private.isNotEmpty() }
     }
 
     /** Аврора или Геспера сама пишет в общий чат. Вторая может ответить — один раз, без бесконечной переписки ИИ с ИИ. */
@@ -455,8 +478,10 @@ object HesperaEngine {
         val gap = ((now - (history.lastOrNull()?.time ?: now)) / 60_000L).coerceAtLeast(0)
         val handReady = prefs.handConfigured && !prefs.handOff
         val group = synchronized(HesperaStore.LOCK) { store.group() }
-        val w = HesperaApi.wake(prefs.serverUrl, prefs.token, history, group, store.tools(handReady), nowTimeLine(history), gap, store.unanswered)
+        val w = HesperaApi.wake(prefs.serverUrl, prefs.token, history, group, store.tools(handReady), nowTimeLine(history), gap, store.unanswered,
+            ProfileStore(ctx).pageJson())
         store.nextWake = now + (w.wakeMin ?: DEFAULT_WAKE_MIN) * 60_000L
+        PageSync.apply(ctx, w.changes)
         w.toGroup.forEach { GroupEngine.autoPost(ctx, WHO_HESPERA, it) }
         val msg = w.message ?: return (if (w.toGroup.isNotEmpty()) "в общий чат: " + w.toGroup.first() else null).also { HesperaBus.signal() }
         synchronized(HesperaStore.LOCK) {
@@ -598,6 +623,30 @@ class HesperaViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Мой комментарий под её постом: сразу на экране, потом на сервере. */
+    fun commentPost(post: HesperaPost, text: String) {
+        val t = text.replace(Regex("\\s+"), " ").trim().take(COMMENT_MAX)
+        if (t.isEmpty()) return
+        val mine = PostComment(AUTHOR_ME, t, System.currentTimeMillis())
+        profile = profile.copy(posts = profile.posts.map { if (it.id == post.id) it.copy(comments = it.comments + mine) else it })
+        viewModelScope.launch {
+            runCatching { HesperaApi.comment(base(), token(), post.id, t) }.onSuccess { cs ->
+                profile = profile.copy(posts = profile.posts.map { if (it.id == post.id) it.copy(comments = cs) else it })
+            }.onFailure {
+                profile = profile.copy(posts = profile.posts.map { if (it.id == post.id) it.copy(comments = it.comments - mine) else it })
+                error = "Комментарий не дошёл: ${it.message ?: "нет связи"}"
+            }
+        }
+    }
+
+    fun deleteComment(post: HesperaPost, c: PostComment) {
+        if (c.who != AUTHOR_ME) return
+        profile = profile.copy(posts = profile.posts.map { if (it.id == post.id) it.copy(comments = it.comments - c) else it })
+        viewModelScope.launch {
+            runCatching { HesperaApi.comment(base(), token(), post.id, "", deleteAt = c.at) }.onFailure { refreshProfile() }
+        }
+    }
+
     // ---------- вдвоём ----------
     var duoOn by mutableStateOf(store.duoOn)
         private set
@@ -730,6 +779,7 @@ class HesperaViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 synchronized(HesperaStore.LOCK) { store.saveChat(chat.toList()) }
                 r.toGroup.forEach { t -> launch { runCatching { GroupEngine.autoPost(ctx, WHO_HESPERA, t, notify = false) }; reloadGroup() } }
+                PageSync.apply(ctx, r.changes, notify = false)
                 if (r.changes.isNotEmpty()) refreshProfile()
                 maybeReflect()
             } catch (e: Exception) {
@@ -835,5 +885,26 @@ class HesperaViewModel(app: Application) : AndroidViewModel(app) {
 
     companion object {
         private const val REFLECT_EVERY = 30
+    }
+}
+
+/** Лайки и комментарии Авроры к постам Гесперы: эти посты на сервере, поэтому запрос уходит туда в фоне. */
+object HesperaSocial {
+    private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
+
+    fun likeByAurora(ctx: Context, snippet: String) {
+        val p = AppPrefs(ctx)
+        if (p.token.isBlank() || snippet.isBlank()) return
+        scope.launch {
+            runCatching {
+                AuroraApi.post(p.serverUrl, "/hespera/like", p.token, JSONObject().put("who", WHO_AURORA).put("snippet", snippet).put("on", true))
+            }
+        }
+    }
+
+    fun commentByAurora(ctx: Context, snippet: String, text: String) {
+        val p = AppPrefs(ctx)
+        if (p.token.isBlank() || snippet.isBlank()) return
+        scope.launch { runCatching { HesperaApi.comment(p.serverUrl, p.token, 0L, text, WHO_AURORA, snippet) } }
     }
 }

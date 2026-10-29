@@ -149,6 +149,7 @@ fun ChatScreen(vm: ChatViewModel = viewModel(), hvm: HesperaViewModel = viewMode
             "chat" -> { booted = true; tab = Tab.Chat; screen = Screen.Chat; hvm.selectChat(WHO_AURORA) }
             "hespera" -> { booted = true; tab = Tab.Chat; screen = Screen.Chat; hvm.selectChat(WHO_HESPERA) }
             "group" -> { booted = true; tab = Tab.Chat; screen = Screen.Chat; hvm.selectChat(WHO_GROUP) }
+            "feed" -> { booted = true; tab = Tab.Feed; screen = Screen.Chat; vm.reloadExe(); hvm.refreshProfile() }
         }
         vm.openRequest = null
     }

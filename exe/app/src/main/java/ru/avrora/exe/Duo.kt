@@ -48,12 +48,12 @@ object DuoApi {
     suspend fun talk(
         base: String, token: String, memory: String, persona: String, localTime: String,
         auroraPrivate: List<ChatMessage>, hesperaPrivate: List<ChatMessage>, group: List<ChatMessage>,
-        auroraTools: List<String>, hesperaTools: List<String>, starter: String
+        auroraTools: List<String>, hesperaTools: List<String>, starter: String, page: JSONObject = JSONObject()
     ): Talk {
         val body = JSONObject().put("memory", memory).put("persona", persona).put("local_time", localTime)
             .put("aurora_private", msgs(auroraPrivate, 15)).put("hespera_private", msgs(hesperaPrivate, 15))
             .put("group", HesperaApi.groupJson(group, 20)).put("aurora_tools", JSONArray(auroraTools))
-            .put("hespera_tools", JSONArray(hesperaTools)).put("starter", starter).put("max_turns", 12)
+            .put("hespera_tools", JSONArray(hesperaTools)).put("starter", starter).put("max_turns", 12).put("page", page)
         val r = AuroraApi.post(base, "/duo/talk", token, body)
         val arr = r.optJSONArray("messages") ?: JSONArray()
         val lines = (0 until arr.length()).map { arr.getJSONObject(it) }.map {
@@ -143,7 +143,7 @@ object DuoEngine {
         val t = DuoApi.talk(
             prefs.serverUrl, prefs.token, mem, prefs.loadPersona().compile(), nowTimeLine(auroraPrivate),
             auroraPrivate, synchronized(HesperaStore.LOCK) { store.chat() }, group,
-            auroraTools, store.tools(handReady), starter
+            auroraTools, store.tools(handReady), starter, ProfileStore(ctx).pageJson()
         )
         if (t.lines.isEmpty()) return null
         // у каждого сообщения своё время: разговор разворачивается на глазах
@@ -156,6 +156,7 @@ object DuoEngine {
         synchronized(HesperaStore.LOCK) { store.saveGroup(store.group() + out) }
         store.duoUntil = out.last().time
         if (t.auroraMarkers.isNotEmpty()) ExeMarkers.apply(ctx, t.auroraMarkers.joinToString("\n"), now)
+        PageSync.apply(ctx, t.changes)
         t.private.forEach { (who, text) -> GroupEngine.toPrivate(ctx, who, text) }
         HesperaBus.signal()
         val first = out.first()

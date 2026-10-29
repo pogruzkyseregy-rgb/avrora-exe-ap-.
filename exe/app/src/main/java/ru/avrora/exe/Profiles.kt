@@ -109,8 +109,11 @@ class ProfileStore(ctx: Context) {
     @Synchronized
     fun countSince(author: String, since: Long): Int = posts().count { it.author == author && it.at >= since }
 
-    /** Снимок ленты для сервера: так Геспера видит страницы Адониса и Авроры. */
-    fun pageJson(): JSONObject {
+    /**
+     * Снимок ленты для сервера: так Геспера видит страницы Адониса и Авроры.
+     * withPhoto — приложить фото из самого свежего поста со снимком (сервер решит, показать ли его ей).
+     */
+    fun pageJson(withPhoto: Boolean = false): JSONObject {
         val a = JSONArray()
         posts().takeLast(12).forEach { p ->
             val liked = JSONArray()
@@ -122,7 +125,13 @@ class ProfileStore(ctx: Context) {
             a.put(JSONObject().put("id", p.id).put("author", p.author).put("text", p.text.take(600)).put("photo", p.photo.isNotBlank())
                 .put("at", p.at).put("liked_by", liked).put("comments", cs))
         }
-        return JSONObject().put("adonis_status", profile(AUTHOR_ME).status).put("aurora_status", profile(AUTHOR_HER).status).put("posts", a)
+        val out = JSONObject().put("adonis_status", profile(AUTHOR_ME).status).put("aurora_status", profile(AUTHOR_HER).status).put("posts", a)
+        if (withPhoto) {
+            val p = posts().takeLast(3).lastOrNull { it.photo.startsWith("снимок:") }
+            val b64 = p?.let { runCatching { encodeForModel(File(File(dir, "sent"), it.photo.removePrefix("снимок:"))) }.getOrNull() }
+            if (p != null && b64 != null) out.put("photo_b64", b64).put("photo_post", p.id)
+        }
+        return out
     }
 
     /** Текст для неё: что сейчас на страницах и в ленте. */

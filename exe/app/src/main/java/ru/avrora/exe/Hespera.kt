@@ -142,7 +142,7 @@ object HesperaApi {
     data class Reply(val text: String, val changes: List<HesperaChange>, val trace: String, val toGroup: List<String>)
 
     suspend fun chat(ctx: Context, base: String, token: String, history: List<ChatMessage>, group: List<ChatMessage>, tools: List<String>, localTime: String): Reply {
-        val page = ProfileStore(ctx).pageJson()
+        val page = withContext(Dispatchers.IO) { ProfileStore(ctx).pageJson(withPhoto = true) }
         val sent = history.filter { it.role == "user" || it.role == "assistant" }.takeLast(60)
         val snaps = snapsFor(ctx, sent)
         val body = JSONObject().put("messages", msgsJson(sent, attached = snaps.map { it.second }.toSet()))

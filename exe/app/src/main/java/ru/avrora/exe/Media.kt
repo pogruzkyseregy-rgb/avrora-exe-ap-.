@@ -73,6 +73,49 @@ object MediaCache {
         }
     }
 
+    /** Байты картинки из чего угодно, что показывает чат: файл, картинка из приложения, адрес в галерее. */
+    private fun readModel(ctx: Context, model: Any): ByteArray? = runCatching {
+        when (model) {
+            is File -> model.readBytes()
+            is android.net.Uri -> ctx.contentResolver.openInputStream(model)?.use { it.readBytes() }
+            is String -> when {
+                model.startsWith("file:///android_asset/") -> ctx.assets.open(model.removePrefix("file:///android_asset/")).use { it.readBytes() }
+                model.startsWith("content://") -> ctx.contentResolver.openInputStream(android.net.Uri.parse(model))?.use { it.readBytes() }
+                else -> File(model.removePrefix("file://")).takeIf { it.exists() }?.readBytes()
+            }
+            else -> null
+        }
+    }.getOrNull()
+
+    private fun imageType(b: ByteArray): Pair<String, String> = when {
+        b.size > 8 && b[0] == 0x89.toByte() && b[1] == 'P'.code.toByte() -> "png" to "image/png"
+        b.size > 3 && b[0] == 0xFF.toByte() && b[1] == 0xD8.toByte() -> "jpg" to "image/jpeg"
+        b.size > 12 && String(b, 8, 4) == "WEBP" -> "webp" to "image/webp"
+        b.size > 3 && String(b, 0, 3) == "GIF" -> "gif" to "image/gif"
+        else -> "png" to "image/png"
+    }
+
+    /** Картинка — в галерею, в альбом AVRORA. */
+    fun saveImage(ctx: Context, model: Any, title: String = ""): Boolean = runCatching {
+        val bytes = readModel(ctx, model) ?: return false
+        val (ext, mime) = imageType(bytes)
+        val base = title.replace(Regex("[\\/:*?\"<>|\n]"), " ").trim().take(40).ifBlank { "avrora" }
+        val name = base + "_" + System.currentTimeMillis() + "." + ext
+        if (Build.VERSION.SDK_INT >= 29) {
+            val values = ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, name)
+                put(MediaStore.Images.Media.MIME_TYPE, mime)
+                put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/AVRORA")
+            }
+            val uri = ctx.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values) ?: return false
+            ctx.contentResolver.openOutputStream(uri)?.use { it.write(bytes) } ?: return false
+        } else {
+            val dir = File(ctx.getExternalFilesDir(Environment.DIRECTORY_PICTURES), "AVRORA").apply { mkdirs() }
+            File(dir, name).writeBytes(bytes)
+        }
+        true
+    }.getOrDefault(false)
+
     /** Трек в «Загрузки», чтобы он остался и вне приложения. */
     fun saveToDownloads(ctx: Context, src: File, title: String): Boolean = runCatching {
         val name = title.replace(Regex("[\\\\/:*?\"<>|]"), " ").trim().ifBlank { "трек" }.take(60) + ".mp3"
@@ -164,7 +207,10 @@ private fun ImageCard(p: Part.Media, file: File?, failed: String?, accent: Color
         contentAlignment = Alignment.Center
     ) {
         when {
-            file != null -> AsyncImage(model = file, contentDescription = p.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxWidth().aspectRatio(1f))
+            file != null -> {
+                AsyncImage(model = file, contentDescription = p.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxWidth().aspectRatio(1f))
+                SaveBadge(Modifier.align(Alignment.BottomEnd)) { ctx -> MediaCache.saveImage(ctx, file, p.title) }
+            }
             failed != null -> Text("картинка не загрузилась\nнажми, чтобы повторить", color = TextDim, fontSize = 12.sp)
             else -> Text("рисунок загружается…", color = TextDim, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
         }
@@ -249,6 +295,20 @@ private fun TrackCard(p: Part.Media, file: File?, failed: String?, accent: Color
             }
         }
     }
+}
+
+/** Кружок «↓» поверх картинки: сохранить в галерею. */
+@Composable
+fun SaveBadge(modifier: Modifier = Modifier, save: (Context) -> Boolean) {
+    val ctx = LocalContext.current
+    Box(
+        modifier.padding(6.dp).size(34.dp).clip(CircleShape).background(Color(0xAA000000))
+            .clickable {
+                val ok = save(ctx)
+                Toast.makeText(ctx, if (ok) "Сохранено в галерею: Pictures/AVRORA" else "Не получилось сохранить", Toast.LENGTH_SHORT).show()
+            },
+        contentAlignment = Alignment.Center
+    ) { Text("↓", color = Color.White, fontSize = 18.sp) }
 }
 
 /** Текст без меток медиа и сами метки — для пузырей Гесперы и общего чата. */

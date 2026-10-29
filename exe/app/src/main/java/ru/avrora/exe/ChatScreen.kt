@@ -459,6 +459,16 @@ fun ChatScreen(vm: ChatViewModel = viewModel(), hvm: HesperaViewModel = viewMode
                     contentScale = ContentScale.Fit,
                     modifier = Modifier.fillMaxSize().padding(8.dp)
                 )
+                // любую картинку из чата можно сохранить себе: нарисованную, присланную, из её альбома
+                val vctx = LocalContext.current
+                TextButton(
+                    onClick = {
+                        val ok = MediaCache.saveImage(vctx, model)
+                        android.widget.Toast.makeText(vctx, if (ok) "Сохранено в галерею: Pictures/AVRORA" else "Не получилось сохранить", android.widget.Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 28.dp)
+                        .background(Color(0x99000000), RoundedCornerShape(20.dp))
+                ) { Text("↓  Скачать", color = Color.White, fontSize = 15.sp) }
             }
         }
     }

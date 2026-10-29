@@ -479,6 +479,66 @@ fun HesperaSocial(hvm: HesperaViewModel, onCore: () -> Unit, onWrite: () -> Unit
     Spacer(Modifier.height(12.dp))
 }
 
+/** Пост Гесперы: как у Авроры — аватар, время, текст, картинка, лайк Адониса. */
+@Composable
+fun HespPostCard(hvm: HesperaViewModel, post: HesperaPost) {
+    val shape = RoundedCornerShape(16.dp)
+    Column(
+        Modifier.fillMaxWidth().clip(shape).background(BubbleAurora).border(1.dp, HespColor.copy(alpha = 0.45f), shape).padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            HespAvatar(hvm.avatar, 32.dp)
+            Spacer(Modifier.width(8.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Геспера", color = HespColor, fontSize = 14.sp)
+                Text(hDay.format(Date((post.at * 1000).toLong())), color = TextDim, fontSize = 11.sp)
+            }
+        }
+        if (post.text.isNotBlank()) Text(post.text, color = TextMain, fontSize = 15.sp, lineHeight = 21.sp)
+        if (post.media.isNotBlank()) MediaPart(Part.Media(post.media, post.text.take(40)), HespColor) {}
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                if (post.liked) "♥" else "♡", color = if (post.liked) HespColor else TextDim, fontSize = 22.sp,
+                modifier = Modifier.clickable { hvm.likePost(post) }.padding(end = 8.dp)
+            )
+            Text(if (post.liked) "ты поставил лайк — она увидит" else "нравится?", color = TextDim, fontSize = 12.sp)
+        }
+    }
+}
+
+/** Два блока досье о жизни вдвоём: что одна заметила о другой и их разговоры без Адониса. */
+fun duoItems(who: String, hvm: HesperaViewModel, accent: Color): List<DossierItem> {
+    val d = hvm.duo
+    val about = d.about[who].orEmpty()
+    val otherName = if (who == WHO_AURORA) "ГЕСПЕРЕ" else "АВРОРЕ"
+    val talks = d.talks
+    val mood = d.mood[who]
+    return listOf(
+        DossierItem("about", (if (who == WHO_AURORA) "О " else "ОБ ") + otherName, if (about.isEmpty()) "пока ничего" else "${about.size} заметок", accent,
+            preview = { Sparkline(perDay(about.map { (it.at * 1000).toLong() }), accent) }
+        ) {
+            DetailHint("Это она записала сама, пока они разговаривали: что поняла о " + (if (who == WHO_AURORA) "Геспере." else "Авроре."))
+            if (about.isEmpty()) DetailHint("Записей пока нет.")
+            about.reversed().take(10).forEach { DetailLine(hDay.format(Date((it.at * 1000).toLong())), it.text) }
+        },
+        DossierItem("duo", "ВДВОЁМ", if (talks.isEmpty()) "ещё не говорили" else "${talks.size} разговоров", accent,
+            preview = { Sparkline(perDay(talks.map { (it.at * 1000).toLong() }), accent) }
+        ) {
+            if (mood != null && mood.word.isNotBlank()) DetailLine("настроение · " + hDay.format(Date((mood.at * 1000).toLong())), mood.word, mood.why)
+            if (talks.isEmpty()) DetailHint("Они ещё не разговаривали без тебя. Включается в общем чате: шестерёнка → «Без тебя».")
+            talks.reversed().take(8).forEach { t ->
+                val by = if (t.starter == WHO_AURORA) "начала Аврора" else "начала Геспера"
+                val end = when (t.endedBy) {
+                    WHO_AURORA -> "ушла Аврора"; WHO_HESPERA -> "ушла Геспера"; "повтор" -> "пошли по кругу"
+                    "блаженство" -> "ушли в общие слова"; else -> "дошли до предела"
+                }
+                DetailLine(hDay.format(Date((t.at * 1000).toLong())) + " · $by · ${t.turns} реплик · $end", t.topic.ifBlank { "без темы" })
+            }
+        }
+    )
+}
+
 private val HESP_FIELDS = listOf("кто я", "внешность", "характер", "голос", "отношение к Адонису", "отношение к Авроре", "о чём мечтаю")
 
 /** Профиль Гесперы: её ядро, показания и блоки; всё, что здесь написано о ней, она решила сама. */

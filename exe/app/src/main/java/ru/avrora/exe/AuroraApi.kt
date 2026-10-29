@@ -72,6 +72,20 @@ object AuroraApi {
         }
     }
 
+    /** Файл с сервера (картинка или трек), как есть. */
+    internal suspend fun getBytes(baseUrl: String, path: String, token: String): ByteArray =
+        withContext(Dispatchers.IO) {
+            val req = Request.Builder()
+                .url(baseUrl.trimEnd('/') + path)
+                .header("Authorization", "Bearer $token")
+                .get()
+                .build()
+            client.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) throw IOException(errorText(resp.code, resp.body?.string().orEmpty()))
+                resp.body?.bytes() ?: ByteArray(0)
+            }
+        }
+
     internal suspend fun get(baseUrl: String, path: String, token: String): JSONObject =
         withContext(Dispatchers.IO) {
             val req = Request.Builder()

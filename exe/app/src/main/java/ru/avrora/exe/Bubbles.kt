@@ -315,7 +315,7 @@ fun MessageRow(
         }
     }
     val shown = steps.take(visible).flatMap { it.second }
-    val bubbleParts = shown.filter { it is Part.Text || it is Part.Sticker || it is Part.Photo || it is Part.Snap || it is Part.QuoteRef ||
+    val bubbleParts = shown.filter { it is Part.Text || it is Part.Sticker || it is Part.Photo || it is Part.Snap || it is Part.QuoteRef || it is Part.Media ||
         (it is Part.Game && (it.kind == "приглашение" || it.kind == "итог")) }
     val sideParts = shown.filter {
         it is Part.Silence || it is Part.State || it is Part.Plan || it is Part.Note ||
@@ -394,6 +394,7 @@ fun MessageRow(
                                     val aspect = remember(file) { imageAspect(file) }
                                     PhotoImage(file, aspect, onOpen)
                                 }
+                                is Part.Media -> MediaPart(p, accent, onOpen)
                                 else -> {}
                             }
                         }

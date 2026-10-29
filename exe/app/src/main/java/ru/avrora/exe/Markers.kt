@@ -3,6 +3,9 @@ package ru.avrora.exe
 /** Теги во вложениях Адониса: [стикер:id], [фото:id], [снимок:файл]. */
 val TAG_RE = Regex("""\[(стикер|фото|снимок|sticker|photo)\s*:\s*([A-Za-z0-9_.\-]+)\s*\]""")
 
+/** Метка готового файла: [медиа: id | название]. */
+val MEDIA_RE = Regex("""\[медиа\s*:\s*([A-Za-z0-9_.\-]{1,80})\s*(?:\|\s*([^\]]{0,80}))?\]""", RegexOption.IGNORE_CASE)
+
 /** Её маркеры молчания и пауз. */
 val PAUSE_RE = Regex("""\[пауза(?:\s*:\s*(\d{1,2}))?\s*\]""", RegexOption.IGNORE_CASE)
 val SILENCE_RE = Regex("""\[молчу\s*\]""", RegexOption.IGNORE_CASE)
@@ -27,7 +30,8 @@ private val ALL_RE = Regex(
         """|в\s+цитаты\s*:\s*([^\]]{2,400})""" +
         """|цитата\s*№\s*(\d{1,4})""" +
         """|игра\s*:\s*(приглашение|принять|отказать|итог)(?:\s*\|\s*([^\]]{0,300}))?""" +
-        """|будильник\s*:\s*([^\]|]{1,40})(?:\|\s*([^\]]{0,200}))?)\s*\]""",
+        """|будильник\s*:\s*([^\]|]{1,40})(?:\|\s*([^\]]{0,200}))?""" +
+        """|медиа\s*:\s*([A-Za-z0-9_.\-]{1,80})\s*(?:\|\s*([^\]]{0,80}))?)\s*\]""",
     RegexOption.IGNORE_CASE
 )
 
@@ -53,6 +57,10 @@ sealed class Part {
     data class QuoteRef(val n: Int) : Part()
     data class Game(val kind: String, val arg: String) : Part()
     data class Alarm(val whenText: String, val label: String) : Part()
+    /** Картинка, которую она нарисовала, или трек, который сочинила: файл лежит на сервере. */
+    data class Media(val id: String, val title: String) : Part() {
+        val audio: Boolean get() = id.endsWith(".mp3")
+    }
     object Silence : Part()
 }
 
@@ -91,6 +99,7 @@ fun parseParts(content: String): List<Part> {
             g[17].isNotEmpty() -> out.add(Part.QuoteRef(g[17].toInt()))
             g[18].isNotEmpty() -> out.add(Part.Game(g[18].lowercase(), g[19].trim()))
             g[20].isNotEmpty() -> out.add(Part.Alarm(g[20].trim(), g[21].trim()))
+            g[22].isNotEmpty() -> out.add(Part.Media(g[22].trim(), g[23].trim()))
             else -> out.add(Part.Pause((g[3].toIntOrNull() ?: 2).coerceIn(1, 8)))
         }
         last = m.range.last + 1
@@ -122,6 +131,7 @@ fun quoteSnippet(content: String, limit: Int = 300): String {
             is Part.Text -> p.s
             is Part.Photo, is Part.Snap -> "[фото]"
             is Part.Sticker -> "[стикер]"
+            is Part.Media -> if (p.audio) "[трек «${p.title}»]" else "[картинка]"
             else -> ""
         }
         if (piece.isNotEmpty()) {

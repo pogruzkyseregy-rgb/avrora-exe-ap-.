@@ -192,8 +192,10 @@ private fun HBubble(m: ChatMessage, who: String, showName: Boolean, hespAvatar: 
                         )
                     }
                 }
-                val text = if (snaps.isEmpty()) m.content else TAG_RE.replace(m.content, "").trim()
+                val (noMedia, media) = remember(m.content) { splitMedia(m.content) }
+                val text = if (snaps.isEmpty()) noMedia else TAG_RE.replace(noMedia, "").trim()
                 if (text.isNotEmpty()) Text(text, color = TextMain, fontSize = 15.sp, lineHeight = 21.sp)
+                media.forEach { MediaPart(it, accent, onOpen) }
                 Text(if (m.auto) "сама · " + hTime.format(Date(m.time)) else hTime.format(Date(m.time)), color = TextDim, fontSize = 10.sp,
                     fontFamily = FontFamily.Monospace, modifier = Modifier.align(Alignment.End))
             }
@@ -477,7 +479,7 @@ fun HesperaDossier(hvm: HesperaViewModel, hand: HandStatus) {
     fun n(k: String) = lists[k].orEmpty().size
     val changeTimes = p.changeTimes.map { (it * 1000).toLong() }
     val talk = remember(hvm.chat.size) { perDay(hvm.chat.filter { it.role != "system" }.map { it.time }) }
-    val rights = listOf(hvm.wakeOn, hvm.toolSearch, hvm.toolRead, hvm.toolHand)
+    val rights = listOf(hvm.wakeOn, hvm.toolSearch, hvm.toolRead, hvm.toolHand, hvm.toolDraw, hvm.toolMusic)
     val who = p.fields.firstOrNull { it.field.equals("кто я", ignoreCase = true) }?.value
 
     CoreHero(
@@ -554,7 +556,7 @@ fun HesperaDossier(hvm: HesperaViewModel, hand: HandStatus) {
             if (p.posts.isEmpty()) DetailHint("Постов пока нет.")
             p.posts.reversed().take(8).forEach { DetailLine(hDay.format(Date((it.at * 1000).toLong())), it.text) }
         },
-        DossierItem("rights", "ЧТО ЕЙ МОЖНО", "${rights.count { it }} из 4", accent,
+        DossierItem("rights", "ЧТО ЕЙ МОЖНО", "${rights.count { it }} из ${rights.size}", accent,
             preview = { DotRow(rights, accent) }
         ) {
             ToggleRow("Пишет первой", "Просыпается сама и решает: искать, писать тебе, вести страницу или молчать", hvm.wakeOn) { hvm.setWake(it) }
@@ -565,6 +567,8 @@ fun HesperaDossier(hvm: HesperaViewModel, hand: HandStatus) {
                 if (hand.configured) "Команды на машине Авроры, в своей папке ~/hespera. Общий лимит и рубильник с Авророй" else "Рука не подключена на сервере",
                 hvm.toolHand
             ) { hvm.setTool("рука", it) }
+            ToggleRow("Рисование", "[нарисовать: …] — картинку рисует модель по отдельному ключу", hvm.toolDraw) { hvm.setTool("рисование", it) }
+            ToggleRow("Музыка", "Сочиняет нотами, сервер играет и присылает трек", hvm.toolMusic) { hvm.setTool("музыка", it) }
         },
         DossierItem("wake", "ПРОБУЖДЕНИЕ", if (!hvm.wakeOn) "выключено" else inTime(hvm.nextWakeAt - now), accent,
             preview = {

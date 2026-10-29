@@ -314,6 +314,14 @@ class AppPrefs(ctx: Context) {
         get() = p.getBoolean("tool_read", true)
         set(v) { p.edit().putBoolean("tool_read", v).apply() }
 
+    var toolDraw: Boolean
+        get() = p.getBoolean("tool_draw", true)
+        set(v) { p.edit().putBoolean("tool_draw", v).apply() }
+
+    var toolMusic: Boolean
+        get() = p.getBoolean("tool_music", true)
+        set(v) { p.edit().putBoolean("tool_music", v).apply() }
+
     var keptSnaps: Set<String>
         get() = p.getStringSet("kept_snaps", emptySet()) ?: emptySet()
         set(v) { p.edit().putStringSet("kept_snaps", v).apply() }

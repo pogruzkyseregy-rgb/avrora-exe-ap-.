@@ -135,6 +135,8 @@ object DuoEngine {
         val auroraTools = buildList {
             if (prefs.toolSearch) add("поиск")
             if (prefs.toolRead) add("чтение")
+            if (prefs.toolDraw) add("рисование")
+            if (prefs.toolMusic) add("музыка")
         }
         store.duoLast = now
         val t = DuoApi.talk(

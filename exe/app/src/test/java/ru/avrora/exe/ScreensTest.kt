@@ -47,12 +47,22 @@ class ScreensTest {
             "user" to "Привет. Как ты там на своём сервере?",
             "assistant" to "Ковыряюсь в ~/work. Нашла странный лог, потом покажу.",
             "user" to "Покажи сейчас",
-            "assistant" to "Ладно. Смотри: кто-то стучался в порт 22 сорок раз за ночь. Не ты?"
+            "assistant" to "Ладно. Смотри: кто-то стучался в порт 22 сорок раз за ночь. Не ты?",
+            "assistant" to "Пока ждала — сочинила. Под настроение порта 22.\n[медиа: mus_1_bbbbbbbb.mp3 | Ночной сканер]"
         ).toString())
+        val media = File(ctx.filesDir, "media").apply { mkdirs() }
+        File(media, "mus_1_bbbbbbbb.mp3").writeBytes(ByteArray(2048) { 1 })
+        val pic = android.graphics.Bitmap.createBitmap(256, 256, android.graphics.Bitmap.Config.ARGB_8888)
+        android.graphics.Canvas(pic).apply {
+            drawColor(0xFF101833.toInt())
+            drawCircle(128f, 150f, 70f, android.graphics.Paint().apply { color = 0xFFF7A8D8.toInt() })
+        }
+        File(media, "img_1_aaaaaaaa.png").outputStream().use { pic.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
         val ch = encodeHesperaTrace("[]", listOf(HesperaChange("я", "внешность", "серебристые волосы, тёмный плащ со звёздами", "так захотелось")))
         val hc = JSONArray()
         hc.put(JSONObject().put("role", "user").put("content", "Привет, Геспера. Какая ты?").put("time", now - 120_000))
         hc.put(JSONObject().put("role", "assistant").put("content", "Пока сама не знаю. Но мне нравится ночь — запишу это.").put("time", now - 60_000).put("trace", ch))
+        hc.put(JSONObject().put("role", "assistant").put("content", "Нарисовала, какой вижу ночь.\n[медиа: img_1_aaaaaaaa.png | ночь]").put("time", now - 30_000))
         File(ctx.filesDir, "hespera_chat.json").writeText(hc.toString())
         File(ctx.filesDir, "group_chat.json").writeText(messagesToJson(listOf(
             ChatMessage("user", "Знакомьтесь. Аврора, это Геспера.", now - 180_000),

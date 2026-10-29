@@ -238,6 +238,12 @@ class HesperaStore(ctx: Context) {
     var toolHand: Boolean
         get() = prefs.getBoolean("t_hand", false)
         set(v) { prefs.edit().putBoolean("t_hand", v).apply() }
+    var toolDraw: Boolean
+        get() = prefs.getBoolean("t_draw", true)
+        set(v) { prefs.edit().putBoolean("t_draw", v).apply() }
+    var toolMusic: Boolean
+        get() = prefs.getBoolean("t_music", true)
+        set(v) { prefs.edit().putBoolean("t_music", v).apply() }
     var wakeOn: Boolean
         get() = prefs.getBoolean("wake_on", true)
         set(v) { prefs.edit().putBoolean("wake_on", v).apply() }
@@ -279,6 +285,8 @@ class HesperaStore(ctx: Context) {
         if (toolSearch) add("поиск")
         if (toolRead) add("чтение")
         if (toolHand && handReady) add("рука")
+        if (toolDraw) add("рисование")
+        if (toolMusic) add("музыка")
     }
 
     companion object {
@@ -529,6 +537,10 @@ class HesperaViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var toolHand by mutableStateOf(store.toolHand)
         private set
+    var toolDraw by mutableStateOf(store.toolDraw)
+        private set
+    var toolMusic by mutableStateOf(store.toolMusic)
+        private set
     var wakeOn by mutableStateOf(store.wakeOn)
         private set
     /** Когда она назначила себе проснуться. */
@@ -586,6 +598,8 @@ class HesperaViewModel(app: Application) : AndroidViewModel(app) {
             "поиск" -> { store.toolSearch = on; toolSearch = on }
             "чтение" -> { store.toolRead = on; toolRead = on }
             "рука" -> { store.toolHand = on; toolHand = on }
+            "рисование" -> { store.toolDraw = on; toolDraw = on }
+            "музыка" -> { store.toolMusic = on; toolMusic = on }
         }
     }
 

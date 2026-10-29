@@ -113,6 +113,10 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var toolHand by mutableStateOf(prefs.toolHand)
         private set
+    var toolDraw by mutableStateOf(prefs.toolDraw)
+        private set
+    var toolMusic by mutableStateOf(prefs.toolMusic)
+        private set
     var hand by mutableStateOf(HandStatus(prefs.handConfigured, prefs.handOff, 0, prefs.handCap))
         private set
     var handBusy by mutableStateOf(false)
@@ -329,6 +333,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             "поиск" -> { prefs.toolSearch = on; toolSearch = on }
             "чтение" -> { prefs.toolRead = on; toolRead = on }
             "рука" -> { prefs.toolHand = on; toolHand = on }
+            "рисование" -> { prefs.toolDraw = on; toolDraw = on }
+            "музыка" -> { prefs.toolMusic = on; toolMusic = on }
         }
     }
 
@@ -1295,6 +1301,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         val limits = limitLines(prefs, memory, System.currentTimeMillis(), exePlans.toList(), exeNotes.size)
         val tools = buildList {
             if (toolSearch) add("поиск")
+            if (toolDraw) add("рисование")
+            if (toolMusic) add("музыка")
             if (toolRead) add("чтение")
             if (toolHand && hand.configured && !hand.off) add("рука")
         }

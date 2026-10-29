@@ -430,6 +430,34 @@ fun HesperaProfileScreen(hvm: HesperaViewModel, hand: HandStatus, onBack: () -> 
     }
 }
 
+/** Пост Гесперы: как у Авроры — аватар, время, текст, картинка, лайк Адониса. */
+@Composable
+fun HespPostCard(hvm: HesperaViewModel, post: HesperaPost) {
+    val shape = RoundedCornerShape(16.dp)
+    Column(
+        Modifier.fillMaxWidth().clip(shape).background(BubbleAurora).border(1.dp, HespColor.copy(alpha = 0.45f), shape).padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            HespAvatar(hvm.avatar, 32.dp)
+            Spacer(Modifier.width(8.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Геспера", color = HespColor, fontSize = 14.sp)
+                Text(hDay.format(Date((post.at * 1000).toLong())), color = TextDim, fontSize = 11.sp)
+            }
+        }
+        if (post.text.isNotBlank()) Text(post.text, color = TextMain, fontSize = 15.sp, lineHeight = 21.sp)
+        if (post.media.isNotBlank()) MediaPart(Part.Media(post.media, post.text.take(40)), HespColor) {}
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                if (post.liked) "♥" else "♡", color = if (post.liked) HespColor else TextDim, fontSize = 22.sp,
+                modifier = Modifier.clickable { hvm.likePost(post) }.padding(end = 8.dp)
+            )
+            Text(if (post.liked) "ты поставил лайк — она увидит" else "нравится?", color = TextDim, fontSize = 12.sp)
+        }
+    }
+}
+
 /** Два блока досье о жизни вдвоём: что одна заметила о другой и их разговоры без Адониса. */
 fun duoItems(who: String, hvm: HesperaViewModel, accent: Color): List<DossierItem> {
     val d = hvm.duo
@@ -469,6 +497,8 @@ private val HESP_FIELDS = listOf("кто я", "внешность", "харак�
 @Composable
 fun HesperaDossier(hvm: HesperaViewModel, hand: HandStatus) {
     LaunchedEffect(Unit) { hvm.refreshProfile() }
+    var showFiles by remember { mutableStateOf(false) }
+    if (showFiles) FileBrowserDialog(WHO_HESPERA) { showFiles = false }
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(30_000); now = System.currentTimeMillis() } }
     val p = hvm.profile
@@ -538,7 +568,7 @@ fun HesperaDossier(hvm: HesperaViewModel, hand: HandStatus) {
                 DetailLine((if (at > 0) hDay.format(Date((at * 1000).toLong())) + " · " else "") + c.field, c.value, c.why)
             }
         },
-    ) + duoItems(WHO_HESPERA, hvm, accent) + listOf(
+    ) + duoItems(WHO_HESPERA, hvm, accent) + listOf(filesItem(WHO_HESPERA, accent) { showFiles = true }) + listOf(
         DossierItem("talk", "РАЗГОВОРЫ", "сегодня ${talk.last().toInt()}", accent,
             preview = { Sparkline(talk, accent) }
         ) {
@@ -549,12 +579,12 @@ fun HesperaDossier(hvm: HesperaViewModel, hand: HandStatus) {
             ), accent)
             DetailHint("«Общий» — её реплики в чате на троих, «сама» — то, что она написала без вопроса.")
         },
-        DossierItem("page", "СТРАНИЦА", "${p.posts.size} постов", accent,
+        DossierItem("page", "СТРАНИЦА", "${p.posts.size} постов · ♥ ${p.posts.count { it.liked }}", accent,
             preview = { Sparkline(perDay(p.posts.map { (it.at * 1000).toLong() }), accent) }
         ) {
             if (p.status.isNotBlank()) DetailLine("статус", "«${p.status}»")
-            if (p.posts.isEmpty()) DetailHint("Постов пока нет.")
-            p.posts.reversed().take(8).forEach { DetailLine(hDay.format(Date((it.at * 1000).toLong())), it.text) }
+            if (p.posts.isEmpty()) DetailHint("Постов пока нет. Она пишет их сама: текстом, со своим рисунком или с твоим фото.")
+            p.posts.reversed().take(10).forEach { HespPostCard(hvm, it) }
         },
         DossierItem("rights", "ЧТО ЕЙ МОЖНО", "${rights.count { it }} из ${rights.size}", accent,
             preview = { DotRow(rights, accent) }

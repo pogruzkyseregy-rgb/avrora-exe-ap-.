@@ -156,8 +156,16 @@ object ExeMarkers {
                 is Part.Post -> if (p.text.isNotBlank()) {
                     val ps = ProfileStore(ctx)
                     if (ps.countSince(AUTHOR_HER, now - 24 * 3_600_000L) < POST_DAILY_CAP) {
-                        val photo = if (p.photoId.isNotBlank() && photoExists(ctx, p.photoId)) "фото:${p.photoId}" else ""
-                        ps.addPost(PostItem(newId("p"), AUTHOR_HER, p.text.take(POST_MAX), photo, now))
+                        // «[пост: текст | картинка]» — приложить то, что она нарисовала в этом же сообщении
+                        val drawn = Regex("""\s*\|\s*(картинк|рисун)\w*\s*$""", RegexOption.IGNORE_CASE).find(p.text)
+                        val media = if (drawn != null) parts.filterIsInstance<Part.Media>().firstOrNull { !it.audio } else null
+                        val text = if (drawn != null) p.text.substring(0, drawn.range.first).trim() else p.text
+                        val photo = when {
+                            media != null -> "медиа:${media.id}"
+                            p.photoId.isNotBlank() && photoExists(ctx, p.photoId) -> "фото:${p.photoId}"
+                            else -> ""
+                        }
+                        ps.addPost(PostItem(newId("p"), AUTHOR_HER, text.take(POST_MAX), photo, now))
                     }
                 }
                 is Part.Status -> if (p.text.isNotBlank()) ProfileStore(ctx).setStatus(AUTHOR_HER, p.text, now)

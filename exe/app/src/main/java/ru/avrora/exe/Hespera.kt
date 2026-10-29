@@ -38,7 +38,7 @@ const val WHO_GROUP = "group"
 data class HesperaChange(val kind: String, val field: String, val value: String, val why: String)
 
 data class HesperaField(val field: String, val value: String, val why: String, val at: Double)
-data class HesperaPost(val id: Long, val at: Double, val text: String)
+data class HesperaPost(val id: Long, val at: Double, val text: String, val media: String = "", val liked: Boolean = false)
 data class HesperaProfile(
     val status: String = "",
     val born: Double = 0.0,
@@ -169,9 +169,13 @@ object HesperaApi {
         val changes = changesFromJson(ch)
         val times = if (ch == null) emptyList() else (0 until ch.length()).map { ch.getJSONObject(it).optDouble("at") }
         val posts = r.optJSONArray("posts")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) }
-            .map { HesperaPost(it.optLong("id"), it.optDouble("at"), it.optString("text")) } } ?: emptyList()
+            .map { HesperaPost(it.optLong("id"), it.optDouble("at"), it.optString("text"), it.optString("media"), it.optBoolean("liked")) } } ?: emptyList()
         return HesperaProfile(r.optString("status"), r.optDouble("born"), fields, lists, changes, times, posts,
             r.optInt("notes"), r.optInt("episodes"), r.optLong("avatar_v"))
+    }
+
+    suspend fun like(base: String, token: String, id: Long, on: Boolean) {
+        AuroraApi.post(base, "/hespera/like", token, JSONObject().put("id", id).put("on", on))
     }
 
     /** Аватар, который она выбрала себе сама. null — ещё не выбрала. */
@@ -553,6 +557,18 @@ class HesperaViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun selectChat(who: String) { chatWho = who; store.chatWho = who }
+
+    /** Лайк её посту: сразу на экране, потом на сервере (она увидит в следующем разговоре). */
+    fun likePost(post: HesperaPost) {
+        val on = !post.liked
+        profile = profile.copy(posts = profile.posts.map { if (it.id == post.id) it.copy(liked = on) else it })
+        viewModelScope.launch {
+            runCatching { HesperaApi.like(base(), token(), post.id, on) }.onFailure {
+                profile = profile.copy(posts = profile.posts.map { if (it.id == post.id) it.copy(liked = !on) else it })
+                error = "Лайк не дошёл: ${it.message ?: "нет связи"}"
+            }
+        }
+    }
 
     // ---------- вдвоём ----------
     var duoOn by mutableStateOf(store.duoOn)

@@ -76,6 +76,10 @@ private fun RoundAvatar(vm: ChatViewModel, owner: String, p: Profile, size: Dp) 
 
 @Composable
 private fun PostPhoto(vm: ChatViewModel, tag: String) {
+    if (tag.startsWith("медиа:")) {
+        MediaPart(Part.Media(tag.removePrefix("медиа:"), ""), Glow) {}
+        return
+    }
     val model: Any? = when {
         tag.startsWith("фото:") -> vm.photos.firstOrNull { it.id == tag.removePrefix("фото:") }?.model
         tag.startsWith("снимок:") -> File(vm.library.sentDir, tag.removePrefix("снимок:"))
@@ -282,12 +286,18 @@ fun ProfilesScreen(vm: ChatViewModel, onBack: () -> Unit) {
 
 
 @Composable
-fun FeedScreen(vm: ChatViewModel, onGear: () -> Unit) {
+fun FeedScreen(vm: ChatViewModel, hvm: HesperaViewModel, onGear: () -> Unit) {
+    androidx.compose.runtime.LaunchedEffect(Unit) { hvm.refreshProfile() }
     TabPage("ЛЕНТА", onGear) {
-        Hint("Страницы видите только вы двое. Аврора ведёт свою сама: статус, посты, лайки. Что ты здесь пишешь, она видит в следующем разговоре.")
+        Hint("Страницы видите только вы трое. Аврора и Геспера ведут свои сами: статус, посты, лайки. Что ты здесь пишешь, Аврора видит в следующем разговоре.")
         PostComposer(vm)
-        if (vm.posts.isEmpty()) Hint("Лента пока пуста.")
-        vm.posts.reversed().forEach { PostCard(vm, it) }
+        // общая лента: посты Авроры и твои (живут в приложении) и посты Гесперы (живут на сервере), по времени
+        val all = (vm.posts.map { FeedEntry(it.at, it, null) } +
+            hvm.profile.posts.map { FeedEntry((it.at * 1000).toLong(), null, it) }).sortedByDescending { it.at }
+        if (all.isEmpty()) Hint("Лента пока пуста.")
+        all.forEach { e ->
+            if (e.mine != null) PostCard(vm, e.mine) else if (e.hesp != null) HespPostCard(hvm, e.hesp)
+        }
     }
 }
 
@@ -330,6 +340,8 @@ fun ProfileSwitch(selected: Int, items: List<Pair<String, Color>>, onSelect: (In
 }
 
 private val dayFmt = SimpleDateFormat("d MMM", Locale("ru"))
+
+private class FeedEntry(val at: Long, val mine: PostItem?, val hesp: HesperaPost?)
 private val PERSONA_AXES = listOf("тепло", "игра", "прямота", "слова", "стикеры")
 private val KIND_TITLES = mapOf("язык" to "язык", "поворот" to "повороты", "тон" to "тон", "планы" to "планы", "адонис" to "об Адонисе")
 
@@ -337,6 +349,8 @@ private val KIND_TITLES = mapOf("язык" to "язык", "поворот" to "�
 @Composable
 fun AuroraDossier(vm: ChatViewModel, hvm: HesperaViewModel) {
     androidx.compose.runtime.LaunchedEffect(Unit) { hvm.refreshProfile() }
+    var showFiles by remember { mutableStateOf(false) }
+    if (showFiles) FileBrowserDialog(WHO_AURORA) { showFiles = false }
     val now = System.currentTimeMillis()
     val msgs = vm.messages
     val first = msgs.firstOrNull()?.time ?: now
@@ -375,7 +389,7 @@ fun AuroraDossier(vm: ChatViewModel, hvm: HesperaViewModel) {
             else text.lines().forEach { DetailLine("", it.removePrefix("- ")) }
             DetailHint("Меняется в настройках: Характер.")
         },
-    ) + duoItems(WHO_AURORA, hvm, accent) + listOf(
+    ) + duoItems(WHO_AURORA, hvm, accent) + listOf(filesItem(WHO_AURORA, accent) { showFiles = true }) + listOf(
         DossierItem("core", "ЯДРО ПАМЯТИ", "${mem.core.size} записей", accent,
             preview = { MiniBars(CORE_KINDS.map { k -> mem.core.count { it.kind == k }.toFloat() }, accent) }
         ) {

@@ -27,6 +27,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -68,12 +69,12 @@ fun SocialHeader(
                     Offset(0f, size.height * 0.5f), Size(size.width, size.height * 0.5f))
             }
         }
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp).offset(y = (-46).dp), verticalAlignment = Alignment.Bottom) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp).pullUp(46.dp), verticalAlignment = Alignment.Bottom) {
             Box(Modifier.size(100.dp).clip(avatarShape()).background(Night).border(3.dp, accent, avatarShape()), contentAlignment = Alignment.Center) {
                 avatar(94.dp)
             }
         }
-        Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp).offset(y = (-36).dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(name, color = TextMain, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
             Text(handle, color = TextDim, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
             if (status.isNotBlank()) Text("«$status»", color = accent, fontSize = 15.sp, lineHeight = 21.sp, modifier = Modifier.padding(top = 4.dp))
@@ -107,7 +108,7 @@ fun SocialHeader(
 @Composable
 fun FeedTitle(text: String) {
     Text(text, color = TextDim, fontSize = 10.sp, fontFamily = FontFamily.Monospace, letterSpacing = 2.sp,
-        modifier = Modifier.padding(top = 2.dp, bottom = 2.dp).offset(y = (-24).dp))
+        modifier = Modifier.padding(top = 10.dp, bottom = 2.dp))
 }
 
 /** Кнопка «‹ Профиль» над ядром. */
@@ -116,6 +117,13 @@ fun BackToProfile(accent: Color, onBack: () -> Unit) {
     Row(Modifier.fillMaxWidth().clickable { onBack() }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Text("‹  ПРОФИЛЬ", color = accent, fontSize = 12.sp, fontFamily = FontFamily.Monospace, letterSpacing = 2.sp)
     }
+}
+
+/** Сдвинуть вверх и не оставлять под собой пустого места (аватар наезжает на обложку). */
+fun Modifier.pullUp(by: Dp): Modifier = this.layout { measurable, constraints ->
+    val p = measurable.measure(constraints)
+    val shift = by.roundToPx()
+    layout(p.width, (p.height - shift).coerceAtLeast(0)) { p.place(0, -shift) }
 }
 
 @Suppress("unused")

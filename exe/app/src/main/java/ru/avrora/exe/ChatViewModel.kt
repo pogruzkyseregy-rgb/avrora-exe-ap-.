@@ -117,6 +117,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var toolMusic by mutableStateOf(prefs.toolMusic)
         private set
+    var toolHear by mutableStateOf(prefs.toolHear)
+        private set
     var hand by mutableStateOf(HandStatus(prefs.handConfigured, prefs.handOff, 0, prefs.handCap))
         private set
     var handBusy by mutableStateOf(false)
@@ -335,6 +337,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             "рука" -> { prefs.toolHand = on; toolHand = on }
             "рисование" -> { prefs.toolDraw = on; toolDraw = on }
             "музыка" -> { prefs.toolMusic = on; toolMusic = on }
+            "слух" -> { prefs.toolHear = on; toolHear = on }
         }
     }
 
@@ -553,6 +556,27 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             persist()
             sending = false
             requestReply()
+        }
+    }
+
+    /** «Слушаю…» / «расшифровываю…», пока сервер работает с голосовым или треком. */
+    var hearing by mutableStateOf<String?>(null)
+        private set
+
+    /** Голосовое или трек Адониса: сервер расшифровывает или слушает, в чат уходит метка с текстом. */
+    fun sendAudio(bytes: ByteArray, mime: String, name: String, voice: Boolean) {
+        if (sending || hearing != null) return
+        hearing = if (voice) "● расшифровываю голосовое…" else "● слушаю трек…"
+        error = null
+        viewModelScope.launch {
+            try {
+                val h = AudioApi.upload(appCtx, bytes, mime, name, voice)
+                hearing = null
+                addUserMessage(audioTag(voice, h, name))
+            } catch (e: Exception) {
+                hearing = null
+                error = "Звук не дошёл: ${e.message ?: "нет связи"}"
+            }
         }
     }
 
@@ -1303,6 +1327,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             if (toolSearch) add("поиск")
             if (toolDraw) add("рисование")
             if (toolMusic) add("музыка")
+            if (toolHear) add("слух")
             if (toolRead) add("чтение")
             if (toolHand && hand.configured && !hand.off) add("рука")
         }

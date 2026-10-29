@@ -3,6 +3,16 @@ package ru.avrora.exe
 /** Теги во вложениях Адониса: [стикер:id], [фото:id], [снимок:файл]. */
 val TAG_RE = Regex("""\[(стикер|фото|снимок|sticker|photo)\s*:\s*([A-Za-z0-9_.\-]+)\s*\]""")
 
+/** Голосовое или трек от Адониса: [голос: id | расшифровка], [аудио: id | название | что слышно]. */
+val VOICE_RE = Regex("""\[(голос|аудио)\s*:\s*([A-Za-z0-9_.\-]{1,80})\s*(?:\|\s*([^\]|]{0,4000}))?(?:\|\s*([^\]]{0,4000}))?\]""", RegexOption.IGNORE_CASE)
+
+/** Как голосовое и трек видит модель: словами. */
+fun voiceForModel(text: String): String = VOICE_RE.replace(text) { m ->
+    val (kind, id, a, b) = m.destructured
+    if (kind.lowercase() == "голос") "[Голосовое от Адониса, расшифровка: «${a.trim()}»]"
+    else "[Адонис прислал трек «${a.trim()}». Что в нём звучит (пересказ модели со слухом): ${b.trim()} Послушать самой: [послушать: $id]]"
+}
+
 /** Метка готового файла: [медиа: id | название]. */
 val MEDIA_RE = Regex("""\[медиа\s*:\s*([A-Za-z0-9_.\-]{1,80})\s*(?:\|\s*([^\]]{0,80}))?\]""", RegexOption.IGNORE_CASE)
 
@@ -31,7 +41,8 @@ private val ALL_RE = Regex(
         """|цитата\s*№\s*(\d{1,4})""" +
         """|игра\s*:\s*(приглашение|принять|отказать|итог)(?:\s*\|\s*([^\]]{0,300}))?""" +
         """|будильник\s*:\s*([^\]|]{1,40})(?:\|\s*([^\]]{0,200}))?""" +
-        """|медиа\s*:\s*([A-Za-z0-9_.\-]{1,80})\s*(?:\|\s*([^\]]{0,80}))?)\s*\]""",
+        """|медиа\s*:\s*([A-Za-z0-9_.\-]{1,80})\s*(?:\|\s*([^\]]{0,80}))?""" +
+        """|(голос|аудио)\s*:\s*([A-Za-z0-9_.\-]{1,80})\s*(?:\|\s*([^\]|]{0,4000}))?(?:\|\s*([^\]]{0,4000}))?)\s*\]""",
     RegexOption.IGNORE_CASE
 )
 
@@ -61,6 +72,8 @@ sealed class Part {
     data class Media(val id: String, val title: String) : Part() {
         val audio: Boolean get() = id.endsWith(".mp3")
     }
+    /** Голосовое Адониса (расшифровка) или его трек (название и что в нём слышно). */
+    data class Voice(val voice: Boolean, val id: String, val first: String, val second: String) : Part()
     object Silence : Part()
 }
 
@@ -100,6 +113,7 @@ fun parseParts(content: String): List<Part> {
             g[18].isNotEmpty() -> out.add(Part.Game(g[18].lowercase(), g[19].trim()))
             g[20].isNotEmpty() -> out.add(Part.Alarm(g[20].trim(), g[21].trim()))
             g[22].isNotEmpty() -> out.add(Part.Media(g[22].trim(), g[23].trim()))
+            g[24].isNotEmpty() -> out.add(Part.Voice(g[24].lowercase() == "голос", g[25].trim(), g[26].trim(), g[27].trim()))
             else -> out.add(Part.Pause((g[3].toIntOrNull() ?: 2).coerceIn(1, 8)))
         }
         last = m.range.last + 1
@@ -132,6 +146,7 @@ fun quoteSnippet(content: String, limit: Int = 300): String {
             is Part.Photo, is Part.Snap -> "[фото]"
             is Part.Sticker -> "[стикер]"
             is Part.Media -> if (p.audio) "[трек «${p.title}»]" else "[картинка]"
+            is Part.Voice -> if (p.voice) "[голосовое] ${p.first}".trim() else "[трек «${p.first}»]"
             else -> ""
         }
         if (piece.isNotEmpty()) {

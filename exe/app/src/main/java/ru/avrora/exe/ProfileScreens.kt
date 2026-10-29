@@ -59,7 +59,7 @@ private fun avatarModel(vm: ChatViewModel, owner: String, p: Profile): Any {
 }
 
 @Composable
-private fun RoundAvatar(vm: ChatViewModel, owner: String, p: Profile, size: Dp) {
+internal fun RoundAvatar(vm: ChatViewModel, owner: String, p: Profile, size: Dp) {
     val ring = if (owner == AUTHOR_HER) Glow else Violet
     val model = avatarModel(vm, owner, p)
     Box(
@@ -302,13 +302,16 @@ fun FeedScreen(vm: ChatViewModel, hvm: HesperaViewModel, onGear: () -> Unit) {
 }
 
 @Composable
-fun ProfileTabScreen(vm: ChatViewModel, hvm: HesperaViewModel, onGear: () -> Unit) {
+fun ProfileTabScreen(vm: ChatViewModel, hvm: HesperaViewModel, onWrite: (String) -> Unit = {}, onGear: () -> Unit) {
     var tab by rememberSaveable { mutableStateOf(0) }   // 0 Аврора, 1 Геспера, 2 я
+    var core by rememberSaveable { mutableStateOf(false) }   // открыто ядро с графиками
     TabPage("ПРОФИЛЬ", onGear) {
-        ProfileSwitch(tab, listOf("АВРОРА" to Glow, "ГЕСПЕРА" to HespColor, "Я" to Violet)) { tab = it }
+        ProfileSwitch(tab, listOf("АВРОРА" to Glow, "ГЕСПЕРА" to HespColor, "Я" to Violet)) { tab = it; core = false }
         when (tab) {
-            0 -> AuroraDossier(vm, hvm)
-            1 -> HesperaDossier(hvm, vm.hand)
+            0 -> if (core) { BackToProfile(Glow) { core = false }; AuroraDossier(vm, hvm) }
+                 else AuroraSocial(vm, hvm, onCore = { core = true }, onWrite = { onWrite(WHO_AURORA) })
+            1 -> if (core) { BackToProfile(HespColor) { core = false }; HesperaDossier(hvm, vm.hand) }
+                 else HesperaSocial(hvm, onCore = { core = true }, onWrite = { onWrite(WHO_HESPERA) })
             else -> {
                 ProfileHeader(vm, AUTHOR_ME, vm.myProfile, editable = true)
                 PostComposer(vm)
@@ -318,6 +321,35 @@ fun ProfileTabScreen(vm: ChatViewModel, hvm: HesperaViewModel, onGear: () -> Uni
             }
         }
     }
+}
+
+/** Страница Авроры: как в соцсети. Ядро — по кнопке. */
+@Composable
+fun AuroraSocial(vm: ChatViewModel, hvm: HesperaViewModel, onCore: () -> Unit, onWrite: () -> Unit) {
+    var showFiles by remember { mutableStateOf(false) }
+    if (showFiles) FileBrowserDialog(WHO_AURORA) { showFiles = false }
+    val herPosts = vm.posts.filter { it.author == AUTHOR_HER }
+    val first = vm.messages.firstOrNull()?.time ?: System.currentTimeMillis()
+    val days = ((System.currentTimeMillis() - first) / 86_400_000L + 1).coerceAtLeast(1)
+    val state = vm.exeStates.lastOrNull()
+    SocialHeader(
+        accent = Glow,
+        avatar = { size -> RoundAvatar(vm, AUTHOR_HER, vm.herProfile, size) },
+        name = "Аврора",
+        handle = "@avrora.exe · лиса-ИИ",
+        status = vm.herProfile.status,
+        about = state?.let { "сейчас: ${it.name}" + if (it.why.isNotBlank()) " — ${it.why}" else "" } ?: "",
+        counters = listOf("постов" to "${herPosts.size}", "♥" to "${herPosts.count { it.likedByMe }}", "дней" to "$days"),
+        actions = listOf(
+            SocialAction("Ядро", "◎", onCore),
+            SocialAction("Папка", "▤") { showFiles = true },
+            SocialAction("Написать", "✉", onWrite)
+        )
+    )
+    FeedTitle("ЕЁ ЛЕНТА")
+    if (herPosts.isEmpty()) Hint("Постов у неё пока нет. Она пишет их сама — текстом, с фото из альбома или со своим рисунком.")
+    herPosts.reversed().forEach { PostCard(vm, it) }
+    Spacer(Modifier.height(12.dp))
 }
 
 /** Переключатель страниц: тонкие подписи с разрядкой и полоска под выбранной. */

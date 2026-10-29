@@ -36,6 +36,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -98,6 +100,11 @@ fun ChatScreen(vm: ChatViewModel = viewModel(), hvm: HesperaViewModel = viewMode
             pendingSnap = uri
             pending = null
         }
+    }
+    var plusMenu by remember { mutableStateOf(false) }
+    val audioCtx = LocalContext.current
+    val pickAudio = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) readAudio(audioCtx, uri)?.let { (b, mime, name) -> vm.sendAudio(b, mime, name, false) }
     }
     val pickForLibrary = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) addUri = uri
@@ -190,7 +197,7 @@ fun ChatScreen(vm: ChatViewModel = viewModel(), hvm: HesperaViewModel = viewMode
         Box(Modifier.weight(1f).fillMaxWidth().glitchShift(glitch, glitchSeed)) {
           when (tab) {
             Tab.Feed -> FeedScreen(vm, hvm) { widgets = true }
-            Tab.Profile -> ProfileTabScreen(vm, hvm) { widgets = true }
+            Tab.Profile -> ProfileTabScreen(vm, hvm, onWrite = { who -> tab = Tab.Chat; screen = Screen.Chat; hvm.selectChat(who) }) { widgets = true }
             Tab.Gallery -> Column(Modifier.fillMaxSize()) {
                 TabTopBar("ГАЛЕРЕЯ") { widgets = true }
                 LibraryPanel(
@@ -324,12 +331,20 @@ fun ChatScreen(vm: ChatViewModel = viewModel(), hvm: HesperaViewModel = viewMode
                 }
             }
 
+            HearingBar(vm.hearing)
+            RecordingBar()
             Row(
                 Modifier.fillMaxWidth().background(Panel).padding(horizontal = 6.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = { pickSnap.launch(imageOnly) }) {
-                    Icon(Icons.Default.Add, contentDescription = "Отправить фото", tint = TextDim)
+                Box {
+                    IconButton(onClick = { plusMenu = true }) {
+                        Icon(Icons.Default.Add, contentDescription = "Вложение", tint = TextDim)
+                    }
+                    DropdownMenu(expanded = plusMenu, onDismissRequest = { plusMenu = false }) {
+                        DropdownMenuItem(text = { Text("Фото") }, onClick = { plusMenu = false; pickSnap.launch(imageOnly) })
+                        DropdownMenuItem(text = { Text("Музыка / аудиофайл") }, onClick = { plusMenu = false; pickAudio.launch("audio/*") })
+                    }
                 }
                 IconButton(onClick = {
                     showPanel = !showPanel
@@ -356,20 +371,9 @@ fun ChatScreen(vm: ChatViewModel = viewModel(), hvm: HesperaViewModel = viewMode
                     colors = auroraFieldColors()
                 )
                 Spacer(Modifier.width(6.dp))
-                Box(
-                    modifier = Modifier
-                        .size(46.dp)
-                        .clip(CircleShape)
-                        .background(if (canSend) Glow else Edge)
-                        .clickable(enabled = canSend) { submit() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        Icons.Default.Send,
-                        contentDescription = "Отправить",
-                        tint = if (canSend) Night else TextDim,
-                        modifier = Modifier.size(20.dp)
-                    )
+                SendOrMic(canSend, Glow, onSend = { submit() }) { f ->
+                    vm.sendAudio(f.readBytes(), "audio/mp4", "голосовое", true)
+                    f.delete()
                 }
             }
 

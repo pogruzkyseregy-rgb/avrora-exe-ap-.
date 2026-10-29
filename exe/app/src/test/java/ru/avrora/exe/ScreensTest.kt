@@ -48,10 +48,12 @@ class ScreensTest {
             "assistant" to "Ковыряюсь в ~/work. Нашла странный лог, потом покажу.",
             "user" to "Покажи сейчас",
             "assistant" to "Ладно. Смотри: кто-то стучался в порт 22 сорок раз за ночь. Не ты?",
-            "assistant" to "Пока ждала — сочинила. Под настроение порта 22.\n[медиа: mus_1_bbbbbbbb.mp3 | Ночной сканер]"
+            "assistant" to "Пока ждала — сочинила. Под настроение порта 22.\n[медиа: mus_1_bbbbbbbb.mp3 | Ночной сканер]",
+            "user" to "[голос: aud_1_cccccccc.mp3 | Красиво получилось, особенно бас в середине]"
         ).toString())
         val media = File(ctx.filesDir, "media").apply { mkdirs() }
         File(media, "mus_1_bbbbbbbb.mp3").writeBytes(ByteArray(2048) { 1 })
+        File(media, "aud_1_cccccccc.mp3").writeBytes(ByteArray(2048) { 1 })
         val pic = android.graphics.Bitmap.createBitmap(256, 256, android.graphics.Bitmap.Config.ARGB_8888)
         android.graphics.Canvas(pic).apply {
             drawColor(0xFF101833.toInt())
@@ -128,6 +130,8 @@ class ScreensTest {
         shot("${theme}_1_feed")
         tap("ПРОФИЛЬ")
         shot("${theme}_6_aurora_profile")
+        tap("Ядро")
+        shot("${theme}_6b_aurora_core")
         tap("ЯДРО ПАМЯТИ")
         shot("${theme}_7_aurora_block")
         rule.onRoot().performTouchInput { swipeUp(startY = height * 0.75f, endY = height * 0.15f, durationMillis = 300) }

@@ -193,7 +193,9 @@ private fun HBubble(m: ChatMessage, who: String, showName: Boolean, hespAvatar: 
                     }
                 }
                 val (noMedia, media) = remember(m.content) { splitMedia(m.content) }
-                val text = if (snaps.isEmpty()) noMedia else TAG_RE.replace(noMedia, "").trim()
+                val voices = remember(m.content) { parseParts(m.content).filterIsInstance<Part.Voice>() }
+                val text = (if (snaps.isEmpty()) noMedia else TAG_RE.replace(noMedia, "")).let { VOICE_RE.replace(it, "") }.trim()
+                voices.forEach { VoicePart(it, accent) }
                 if (text.isNotEmpty()) Text(text, color = TextMain, fontSize = 15.sp, lineHeight = 21.sp)
                 media.forEach { MediaPart(it, accent, onOpen) }
                 Text(if (m.auto) "сама · " + hTime.format(Date(m.time)) else hTime.format(Date(m.time)), color = TextDim, fontSize = 10.sp,
@@ -220,11 +222,21 @@ private fun HBubble(m: ChatMessage, who: String, showName: Boolean, hespAvatar: 
 }
 
 @Composable
-private fun HInput(sending: Boolean, placeholder: String, accent: Color, onFocus: (Boolean) -> Unit, onSend: (String, Uri?) -> Unit) {
+private fun HInput(
+    sending: Boolean, placeholder: String, accent: Color, onFocus: (Boolean) -> Unit,
+    onAudio: (ByteArray, String, String, Boolean) -> Unit, hearing: String?, onSend: (String, Uri?) -> Unit
+) {
     var input by rememberSaveable(placeholder) { mutableStateOf("") }
     var photo by remember(placeholder) { mutableStateOf<Uri?>(null) }
+    var menu by remember { mutableStateOf(false) }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> if (uri != null) photo = uri }
+    val pickAudio = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) readAudio(ctx, uri)?.let { (b, mime, name) -> onAudio(b, mime, name, false) }
+    }
     val can = !sending && (input.isNotBlank() || photo != null)
+    HearingBar(hearing)
+    RecordingBar()
     photo?.let { u ->
         Row(Modifier.fillMaxWidth().background(Panel).padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             AsyncImage(model = u, contentDescription = null, contentScale = ContentScale.Crop,
@@ -238,8 +250,14 @@ private fun HInput(sending: Boolean, placeholder: String, accent: Color, onFocus
         Modifier.fillMaxWidth().background(Panel).padding(horizontal = 4.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(onClick = { pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) {
-            Icon(Icons.Default.Add, contentDescription = "Отправить фото", tint = TextDim)
+        Box {
+            IconButton(onClick = { menu = true }) { Icon(Icons.Default.Add, contentDescription = "Вложение", tint = TextDim) }
+            androidx.compose.material3.DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                androidx.compose.material3.DropdownMenuItem(text = { Text("Фото") }, onClick = {
+                    menu = false; pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                })
+                androidx.compose.material3.DropdownMenuItem(text = { Text("Музыка / аудиофайл") }, onClick = { menu = false; pickAudio.launch("audio/*") })
+            }
         }
         OutlinedTextField(
             value = input, onValueChange = { input = it },
@@ -249,13 +267,9 @@ private fun HInput(sending: Boolean, placeholder: String, accent: Color, onFocus
             colors = auroraFieldColors()
         )
         Spacer(Modifier.width(6.dp))
-        Box(
-            Modifier.size(46.dp).clip(if (AppTheme.current.frame == "soft") CircleShape else panelShape())
-                .background(if (can) accent else Edge)
-                .clickable(enabled = can) { onSend(input, photo); input = ""; photo = null },
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(Icons.Default.Send, contentDescription = "Отправить", tint = if (can) (if (AppTheme.current.light) Color.White else Night) else TextDim, modifier = Modifier.size(20.dp))
+        SendOrMic(can, accent, onSend = { onSend(input, photo); input = ""; photo = null }) { f ->
+            onAudio(f.readBytes(), "audio/mp4", "голосовое", true)
+            f.delete()
         }
     }
 }
@@ -293,7 +307,8 @@ fun HesperaChatPane(hvm: HesperaViewModel, onProfile: () -> Unit, onFocus: (Bool
             if (hvm.sending) item { Text("Геспера печатает…", color = TextDim, fontSize = 13.sp, modifier = Modifier.padding(start = 38.dp)) }
         }
         ErrorBar(hvm.error, onRetry = hvm::retry, onClose = hvm::clearError)
-        HInput(hvm.sending, "Написать Геспере", HespColor, onFocus) { t, ph -> hvm.send(t, ph) }
+        HInput(hvm.sending, "Написать Геспере", HespColor, onFocus,
+            onAudio = { b, m, n, v -> hvm.sendAudio(b, m, n, v, null) }, hearing = hvm.hearing) { t, ph -> hvm.send(t, ph) }
     }
 }
 
@@ -369,7 +384,8 @@ fun GroupChatPane(hvm: HesperaViewModel, vm: ChatViewModel, onFocus: (Boolean) -
             }
         }
         ErrorBar(hvm.error, onRetry = { hvm.retryGroup(vm) }, onClose = hvm::clearError)
-        HInput(hvm.groupSending, if (pending) "Вмешаться в разговор" else "Написать обеим", Violet, onFocus) { t, ph -> hvm.sendGroup(t, vm, ph) }
+        HInput(hvm.groupSending, if (pending) "Вмешаться в разговор" else "Написать обеим", Violet, onFocus,
+            onAudio = { b, m, n, v -> hvm.sendAudio(b, m, n, v, vm) }, hearing = hvm.hearing) { t, ph -> hvm.sendGroup(t, vm, ph) }
     }
     if (settings) DuoSettingsDialog(hvm) { settings = false }
 }
@@ -411,83 +427,56 @@ private fun DuoSettingsDialog(hvm: HesperaViewModel, onClose: () -> Unit) {
 
 // ---------- профиль Гесперы ----------
 
-/** Отдельный экран из её чата: шапка «назад» и то же досье, что во вкладке «Профиль». */
+/** Отдельный экран из её чата: её страница, ядро — по кнопке. */
 @Composable
 fun HesperaProfileScreen(hvm: HesperaViewModel, hand: HandStatus, onBack: () -> Unit) {
+    var core by remember { mutableStateOf(false) }
     Box(Modifier.fillMaxSize().background(Night)) {
         ThemeBackdrop()
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.fillMaxWidth().background(Panel).padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Назад", tint = TextDim) }
-                Text("ГЕСПЕРА · ПРОФИЛЬ", color = HespColor, fontSize = 15.sp, fontFamily = FontFamily.Monospace)
+                IconButton(onClick = { if (core) core = false else onBack() }) { Icon(Icons.Default.ArrowBack, contentDescription = "Назад", tint = TextDim) }
+                Text(if (core) "ГЕСПЕРА · ЯДРО" else "ГЕСПЕРА · ПРОФИЛЬ", color = HespColor, fontSize = 15.sp, fontFamily = FontFamily.Monospace)
             }
             GradientLine()
             Column(
                 Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) { HesperaDossier(hvm, hand) }
+            ) {
+                if (core) HesperaDossier(hvm, hand) else HesperaSocial(hvm, onCore = { core = true }, onWrite = onBack)
+            }
         }
     }
 }
 
-/** Пост Гесперы: как у Авроры — аватар, время, текст, картинка, лайк Адониса. */
+/** Страница Гесперы: как в соцсети. Ядро — по кнопке. */
 @Composable
-fun HespPostCard(hvm: HesperaViewModel, post: HesperaPost) {
-    val shape = RoundedCornerShape(16.dp)
-    Column(
-        Modifier.fillMaxWidth().clip(shape).background(BubbleAurora).border(1.dp, HespColor.copy(alpha = 0.45f), shape).padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            HespAvatar(hvm.avatar, 32.dp)
-            Spacer(Modifier.width(8.dp))
-            Column(Modifier.weight(1f)) {
-                Text("Геспера", color = HespColor, fontSize = 14.sp)
-                Text(hDay.format(Date((post.at * 1000).toLong())), color = TextDim, fontSize = 11.sp)
-            }
-        }
-        if (post.text.isNotBlank()) Text(post.text, color = TextMain, fontSize = 15.sp, lineHeight = 21.sp)
-        if (post.media.isNotBlank()) MediaPart(Part.Media(post.media, post.text.take(40)), HespColor) {}
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                if (post.liked) "♥" else "♡", color = if (post.liked) HespColor else TextDim, fontSize = 22.sp,
-                modifier = Modifier.clickable { hvm.likePost(post) }.padding(end = 8.dp)
-            )
-            Text(if (post.liked) "ты поставил лайк — она увидит" else "нравится?", color = TextDim, fontSize = 12.sp)
-        }
-    }
-}
-
-/** Два блока досье о жизни вдвоём: что одна заметила о другой и их разговоры без Адониса. */
-fun duoItems(who: String, hvm: HesperaViewModel, accent: Color): List<DossierItem> {
-    val d = hvm.duo
-    val about = d.about[who].orEmpty()
-    val otherName = if (who == WHO_AURORA) "ГЕСПЕРЕ" else "АВРОРЕ"
-    val talks = d.talks
-    val mood = d.mood[who]
-    return listOf(
-        DossierItem("about", (if (who == WHO_AURORA) "О " else "ОБ ") + otherName, if (about.isEmpty()) "пока ничего" else "${about.size} заметок", accent,
-            preview = { Sparkline(perDay(about.map { (it.at * 1000).toLong() }), accent) }
-        ) {
-            DetailHint("Это она записала сама, пока они разговаривали: что поняла о " + (if (who == WHO_AURORA) "Геспере." else "Авроре."))
-            if (about.isEmpty()) DetailHint("Записей пока нет.")
-            about.reversed().take(10).forEach { DetailLine(hDay.format(Date((it.at * 1000).toLong())), it.text) }
-        },
-        DossierItem("duo", "ВДВОЁМ", if (talks.isEmpty()) "ещё не говорили" else "${talks.size} разговоров", accent,
-            preview = { Sparkline(perDay(talks.map { (it.at * 1000).toLong() }), accent) }
-        ) {
-            if (mood != null && mood.word.isNotBlank()) DetailLine("настроение · " + hDay.format(Date((mood.at * 1000).toLong())), mood.word, mood.why)
-            if (talks.isEmpty()) DetailHint("Они ещё не разговаривали без тебя. Включается в общем чате: шестерёнка → «Без тебя».")
-            talks.reversed().take(8).forEach { t ->
-                val by = if (t.starter == WHO_AURORA) "начала Аврора" else "начала Геспера"
-                val end = when (t.endedBy) {
-                    WHO_AURORA -> "ушла Аврора"; WHO_HESPERA -> "ушла Геспера"; "повтор" -> "пошли по кругу"
-                    "блаженство" -> "ушли в общие слова"; else -> "дошли до предела"
-                }
-                DetailLine(hDay.format(Date((t.at * 1000).toLong())) + " · $by · ${t.turns} реплик · $end", t.topic.ifBlank { "без темы" })
-            }
-        }
+fun HesperaSocial(hvm: HesperaViewModel, onCore: () -> Unit, onWrite: () -> Unit) {
+    LaunchedEffect(Unit) { hvm.refreshProfile() }
+    var showFiles by remember { mutableStateOf(false) }
+    if (showFiles) FileBrowserDialog(WHO_HESPERA) { showFiles = false }
+    val p = hvm.profile
+    val days = if (p.born > 0) ((System.currentTimeMillis() / 1000.0 - p.born) / 86400).toInt() + 1 else 1
+    val who = p.fields.firstOrNull { it.field.equals("кто я", ignoreCase = true) }?.value
+    val mood = hvm.duo.mood[WHO_HESPERA]?.takeIf { it.word.isNotBlank() && System.currentTimeMillis() / 1000.0 - it.at < 12 * 3600 }
+    SocialHeader(
+        accent = HespColor,
+        avatar = { size -> HespAvatar(hvm.avatar, size) },
+        name = "Геспера",
+        handle = "@hespera · формирует себя сама",
+        status = p.status,
+        about = listOfNotNull(who, mood?.let { "настроение: ${it.word}" }).joinToString("\n").ifBlank { "Только появилась: кто она — решит сама." },
+        counters = listOf("постов" to "${p.posts.size}", "♥" to "${p.posts.count { it.liked }}", "дней" to "$days"),
+        actions = listOf(
+            SocialAction("Ядро", "◎", onCore),
+            SocialAction("Папка", "▤") { showFiles = true },
+            SocialAction("Написать", "✉", onWrite)
+        )
     )
+    FeedTitle("ЕЁ ЛЕНТА")
+    if (p.posts.isEmpty()) Text("Постов пока нет. Она пишет их сама: текстом, со своим рисунком или с твоим фото.", color = TextDim, fontSize = 13.sp)
+    p.posts.reversed().forEach { HespPostCard(hvm, it) }
+    Spacer(Modifier.height(12.dp))
 }
 
 private val HESP_FIELDS = listOf("кто я", "внешность", "характер", "голос", "отношение к Адонису", "отношение к Авроре", "о чём мечтаю")
@@ -509,7 +498,7 @@ fun HesperaDossier(hvm: HesperaViewModel, hand: HandStatus) {
     fun n(k: String) = lists[k].orEmpty().size
     val changeTimes = p.changeTimes.map { (it * 1000).toLong() }
     val talk = remember(hvm.chat.size) { perDay(hvm.chat.filter { it.role != "system" }.map { it.time }) }
-    val rights = listOf(hvm.wakeOn, hvm.toolSearch, hvm.toolRead, hvm.toolHand, hvm.toolDraw, hvm.toolMusic)
+    val rights = listOf(hvm.wakeOn, hvm.toolSearch, hvm.toolRead, hvm.toolHand, hvm.toolDraw, hvm.toolMusic, hvm.toolHear)
     val who = p.fields.firstOrNull { it.field.equals("кто я", ignoreCase = true) }?.value
 
     CoreHero(
@@ -599,6 +588,7 @@ fun HesperaDossier(hvm: HesperaViewModel, hand: HandStatus) {
             ) { hvm.setTool("рука", it) }
             ToggleRow("Рисование", "[нарисовать: …] — картинку рисует модель по отдельному ключу", hvm.toolDraw) { hvm.setTool("рисование", it) }
             ToggleRow("Музыка", "Сочиняет нотами, сервер играет и присылает трек", hvm.toolMusic) { hvm.setTool("музыка", it) }
+            ToggleRow("Слух", "Слушает треки — свои и твои", hvm.toolHear) { hvm.setTool("слух", it) }
         },
         DossierItem("wake", "ПРОБУЖДЕНИЕ", if (!hvm.wakeOn) "выключено" else inTime(hvm.nextWakeAt - now), accent,
             preview = {

@@ -52,6 +52,7 @@ fun RightsScreen(vm: ChatViewModel, onBack: () -> Unit) {
         SwitchRow("Чтение ссылок", "страница читается текстом; внутренние адреса закрыты", vm.toolRead) { vm.setTool("чтение", it) }
         SwitchRow("Рисование", "[нарисовать: описание] — картинку рисует модель по твоему отдельному ключу", vm.toolDraw) { vm.setTool("рисование", it) }
         SwitchRow("Музыка", "[музыка: название] + ноты ABC — сервер играет их и присылает mp3", vm.toolMusic) { vm.setTool("музыка", it) }
+        SwitchRow("Слух", "[послушать: трек] — модель со слухом рассказывает, что звучит", vm.toolHear) { vm.setTool("слух", it) }
 
         SectionTitle("РУКА")
         val h = vm.hand

@@ -137,6 +137,7 @@ object DuoEngine {
             if (prefs.toolRead) add("чтение")
             if (prefs.toolDraw) add("рисование")
             if (prefs.toolMusic) add("музыка")
+            if (prefs.toolHear) add("слух")
         }
         store.duoLast = now
         val t = DuoApi.talk(

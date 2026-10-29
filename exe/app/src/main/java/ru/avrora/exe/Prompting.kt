@@ -8,7 +8,7 @@ fun describeForModel(
     attachedSnaps: Set<String> = emptySet()
 ): String {
     val (quote, body) = splitQuote(text)
-    val described = describeAttachments(body, stickers, photos, attachedSnaps)
+    val described = describeAttachments(voiceForModel(body), stickers, photos, attachedSnaps)
     return if (quote == null) described else (describeQuote(quote) + "\n" + described).trim()
 }
 
@@ -43,7 +43,7 @@ private val EXE_MARKERS_RE = Regex("""\[(?:состояние|напишу|сл�
 /** Для сжатия памяти: вложения любой стороны как нейтральные пометки. */
 fun toPlainForMemory(text: String, stickers: List<CatalogItem>, photos: List<CatalogItem>): String {
     val (quote, body) = splitQuote(text)
-    val plain = plainAttachments(body, stickers, photos)
+    val plain = plainAttachments(voiceForModel(body), stickers, photos)
     return if (quote == null) plain else (describeQuote(quote) + "\n" + plain).trim()
 }
 

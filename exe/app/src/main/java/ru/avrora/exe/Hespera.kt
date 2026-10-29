@@ -248,6 +248,9 @@ class HesperaStore(ctx: Context) {
     var toolMusic: Boolean
         get() = prefs.getBoolean("t_music", true)
         set(v) { prefs.edit().putBoolean("t_music", v).apply() }
+    var toolHear: Boolean
+        get() = prefs.getBoolean("t_hear", true)
+        set(v) { prefs.edit().putBoolean("t_hear", v).apply() }
     var wakeOn: Boolean
         get() = prefs.getBoolean("wake_on", true)
         set(v) { prefs.edit().putBoolean("wake_on", v).apply() }
@@ -291,6 +294,7 @@ class HesperaStore(ctx: Context) {
         if (toolHand && handReady) add("рука")
         if (toolDraw) add("рисование")
         if (toolMusic) add("музыка")
+        if (toolHear) add("слух")
     }
 
     companion object {
@@ -545,6 +549,8 @@ class HesperaViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var toolMusic by mutableStateOf(store.toolMusic)
         private set
+    var toolHear by mutableStateOf(store.toolHear)
+        private set
     var wakeOn by mutableStateOf(store.wakeOn)
         private set
     /** Когда она назначила себе проснуться. */
@@ -557,6 +563,28 @@ class HesperaViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun selectChat(who: String) { chatWho = who; store.chatWho = who }
+
+    /** «Слушаю…» / «расшифровываю…», пока сервер работает с голосовым или треком. */
+    var hearing by mutableStateOf<String?>(null)
+        private set
+
+    /** Голосовое или трек: на сервер (расшифровка/прослушивание), потом сообщением в её личку или в общий чат. */
+    fun sendAudio(bytes: ByteArray, mime: String, name: String, voice: Boolean, groupWith: ChatViewModel?) {
+        if (hearing != null) return
+        hearing = if (voice) "● расшифровываю голосовое…" else "● слушаю трек…"
+        error = null
+        viewModelScope.launch {
+            try {
+                val h = AudioApi.upload(ctx, bytes, mime, name, voice)
+                val tag = audioTag(voice, h, name)
+                hearing = null
+                if (groupWith != null) sendGroup(tag, groupWith) else send(tag)
+            } catch (e: Exception) {
+                hearing = null
+                error = "Звук не дошёл: ${e.message ?: "нет связи"}"
+            }
+        }
+    }
 
     /** Лайк её посту: сразу на экране, потом на сервере (она увидит в следующем разговоре). */
     fun likePost(post: HesperaPost) {
@@ -616,6 +644,7 @@ class HesperaViewModel(app: Application) : AndroidViewModel(app) {
             "рука" -> { store.toolHand = on; toolHand = on }
             "рисование" -> { store.toolDraw = on; toolDraw = on }
             "музыка" -> { store.toolMusic = on; toolMusic = on }
+            "слух" -> { store.toolHear = on; toolHear = on }
         }
     }
 

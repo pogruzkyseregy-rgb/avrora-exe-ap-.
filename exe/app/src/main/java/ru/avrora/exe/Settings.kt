@@ -322,6 +322,10 @@ class AppPrefs(ctx: Context) {
         get() = p.getBoolean("tool_music", true)
         set(v) { p.edit().putBoolean("tool_music", v).apply() }
 
+    var toolHear: Boolean
+        get() = p.getBoolean("tool_hear", true)
+        set(v) { p.edit().putBoolean("tool_hear", v).apply() }
+
     var keptSnaps: Set<String>
         get() = p.getStringSet("kept_snaps", emptySet()) ?: emptySet()
         set(v) { p.edit().putStringSet("kept_snaps", v).apply() }

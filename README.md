@@ -1,3 +1,13 @@
+# AVRORA.EXE · relay exe-20 (приложение exe-11 без изменений)
+
+## Поиск
+- `[поиск: …]` ищет параллельно: Grok у провайдера сам ходит в интернет (`tools: web_search`) и пишет сводку со ссылками;
+  Bing и DuckDuckGo (lite) ищут одновременно, выдача сливается без повторов. Дальше — DuckDuckGo html и Википедия.
+- DuckDuckGo режет частые запросы с сервера (ответ 202): тогда он «отдыхает» 10 минут. Mojeek показывает капчу —
+  только через `SEARCH_ORDER`. Одинаковый запрос полчаса берётся из памяти.
+- Настройки в relay.env: `SEARCH_MODEL` (по умолчанию grok-4.7, `off` — выключить), `SEARCH_AI_TIMEOUT`, `SEARCH_ORDER`,
+  `SEARCH_TIMEOUT`. Проверка: `GET /diag/search?q=…`. Проверки провайдера: `aurora-relay/vision_check.py`, `aurora-relay/search_probe.py`.
+
 # AVRORA.EXE · exe-11
 
 ## Что нового в exe-11: они разговаривают сами

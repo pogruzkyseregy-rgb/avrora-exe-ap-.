@@ -129,6 +129,7 @@ private fun PostCard(vm: ChatViewModel, post: PostItem) {
         val others = buildList {
             if (!hers && post.likedByHer) add("Аврора")
             if (post.likedByHesp) add("Геспера")
+            if (post.likedByEst) add("Эст")
         }
         LikeRow(accent, if (hers) post.likedByMe else null, others) { vm.toggleLike(post.id) }
         PostComments(post.comments, accent, onSend = { vm.addComment(post.id, it) }, onDelete = { vm.deleteComment(post.id, it.at) })
@@ -277,33 +278,40 @@ fun ProfilesScreen(vm: ChatViewModel, onBack: () -> Unit) {
 
 
 @Composable
-fun FeedScreen(vm: ChatViewModel, hvm: HesperaViewModel, onGear: () -> Unit) {
-    androidx.compose.runtime.LaunchedEffect(Unit) { vm.reloadExe(); hvm.refreshProfile() }
+fun FeedScreen(vm: ChatViewModel, hvm: HesperaViewModel, evm: EstViewModel, onGear: () -> Unit) {
+    androidx.compose.runtime.LaunchedEffect(Unit) { vm.reloadExe(); hvm.refreshProfile(); evm.refreshProfile() }
     TabPage("ЛЕНТА", onGear) {
-        Hint("Страницы видите только вы трое. Аврора и Геспера ведут свои сами: статус, посты, лайки, комментарии. Твои посты и комментарии они видят в следующем разговоре.")
+        Hint("Страницы видите только вы. Аврора, Геспера и Эст ведут свои сами: статус, посты, лайки, комментарии. Твои посты и комментарии они видят в следующем разговоре.")
         PostComposer(vm)
         // общая лента: посты Авроры и твои (живут в приложении) и посты Гесперы (живут на сервере), по времени
         val all = (vm.posts.map { FeedEntry(it.at, it, null) } +
-            hvm.profile.posts.map { FeedEntry((it.at * 1000).toLong(), null, it) }).sortedByDescending { it.at }
+            hvm.profile.posts.map { FeedEntry((it.at * 1000).toLong(), null, it) } +
+            evm.profile.posts.map { FeedEntry((it.at * 1000).toLong(), null, null, it) }).sortedByDescending { it.at }
         if (all.isEmpty()) Hint("Лента пока пуста.")
         all.forEach { e ->
-            if (e.mine != null) PostCard(vm, e.mine) else if (e.hesp != null) HespPostCard(hvm, e.hesp)
+            when {
+                e.mine != null -> PostCard(vm, e.mine)
+                e.hesp != null -> HespPostCard(hvm, e.hesp)
+                e.est != null -> EstPostCard(evm, e.est)
+            }
         }
     }
 }
 
 @Composable
-fun ProfileTabScreen(vm: ChatViewModel, hvm: HesperaViewModel, onWrite: (String) -> Unit = {}, onGear: () -> Unit) {
-    var tab by rememberSaveable { mutableStateOf(0) }   // 0 Аврора, 1 Геспера, 2 я
+fun ProfileTabScreen(vm: ChatViewModel, hvm: HesperaViewModel, evm: EstViewModel, onWrite: (String) -> Unit = {}, onGear: () -> Unit) {
+    var tab by rememberSaveable { mutableStateOf(0) }   // 0 Аврора, 1 Геспера, 2 Эст, 3 я
     var core by rememberSaveable { mutableStateOf(false) }   // открыто ядро с графиками
     androidx.compose.runtime.LaunchedEffect(Unit) { vm.reloadExe() }
     TabPage("ПРОФИЛЬ", onGear) {
-        ProfileSwitch(tab, listOf("АВРОРА" to Glow, "ГЕСПЕРА" to HespColor, "Я" to Violet)) { tab = it; core = false }
+        ProfileSwitch(tab, listOf("АВРОРА" to Glow, "ГЕСПЕРА" to HespColor, "ЭСТ" to EstColor, "Я" to Violet)) { tab = it; core = false }
         when (tab) {
             0 -> if (core) { BackToProfile(Glow) { core = false }; AuroraDossier(vm, hvm) }
                  else AuroraSocial(vm, hvm, onCore = { core = true }, onWrite = { onWrite(WHO_AURORA) })
             1 -> if (core) { BackToProfile(HespColor) { core = false }; HesperaDossier(hvm, vm.hand) }
                  else HesperaSocial(hvm, onCore = { core = true }, onWrite = { onWrite(WHO_HESPERA) })
+            2 -> if (core) { BackToProfile(EstColor) { core = false }; EstDossier(evm, vm.hand) }
+                 else EstSocial(evm, onCore = { core = true }, onWrite = { onWrite(WHO_EST) })
             else -> {
                 ProfileHeader(vm, AUTHOR_ME, vm.myProfile, editable = true)
                 PostComposer(vm)
@@ -365,7 +373,7 @@ fun ProfileSwitch(selected: Int, items: List<Pair<String, Color>>, onSelect: (In
 
 private val dayFmt = SimpleDateFormat("d MMM", Locale("ru"))
 
-private class FeedEntry(val at: Long, val mine: PostItem?, val hesp: HesperaPost?)
+private class FeedEntry(val at: Long, val mine: PostItem?, val hesp: HesperaPost?, val est: HesperaPost? = null)
 private val PERSONA_AXES = listOf("тепло", "игра", "прямота", "слова", "стикеры")
 private val KIND_TITLES = mapOf("язык" to "язык", "поворот" to "повороты", "тон" to "тон", "планы" to "планы", "адонис" to "об Адонисе")
 

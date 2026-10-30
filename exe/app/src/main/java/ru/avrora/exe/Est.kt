@@ -47,6 +47,14 @@ fun taskStatusRu(s: String): String = when (s) {
     else -> s
 }
 
+data class EstMood(val word: String = "", val why: String = "", val at: Double = 0.0)
+data class EstEpisode(val at: Double, val text: String)
+data class EstProfile(
+    val born: Double = 0.0, val status: String = "", val mood: EstMood = EstMood(),
+    val fields: List<Pair<String, String>> = emptyList(), val posts: List<HesperaPost> = emptyList(),
+    val notes: List<String> = emptyList(), val episodes: List<EstEpisode> = emptyList(), val notesN: Int = 0, val episodesN: Int = 0
+)
+
 class EstStore(ctx: Context) {
     private val dir = ctx.filesDir
     private val prefs = ctx.getSharedPreferences("est", Context.MODE_PRIVATE)
@@ -83,6 +91,9 @@ class EstStore(ctx: Context) {
     var avatarV: Long
         get() = prefs.getLong("avatar_v", 0L)
         set(v) { prefs.edit().putLong("avatar_v", v).apply() }
+    var reflected: Long
+        get() = prefs.getLong("reflected", 0L)
+        set(v) { prefs.edit().putLong("reflected", v).apply() }
 
     companion object { val LOCK = Any() }
 }
@@ -96,7 +107,7 @@ object EstBus {
 
 object EstApi {
     data class Reply(val text: String, val toGroup: List<String>, val tasksNew: List<Long>, val tasksRedo: List<Long>,
-                     val trace: String, val refused: List<String>)
+                     val trace: String, val refused: List<String>, val changes: List<HesperaChange> = emptyList())
 
     private fun longs(a: JSONArray?): List<Long> = if (a == null) emptyList() else (0 until a.length()).map { a.optLong(it) }.filter { it > 0 }
     private fun strings(a: JSONArray?): List<String> = if (a == null) emptyList() else (0 until a.length()).map { a.optString(it) }.filter { it.isNotBlank() }
@@ -107,22 +118,49 @@ object EstApi {
         val snaps = HesperaApi.snapsFor(ctx, sent)
         val body = JSONObject().put("messages", HesperaApi.msgsJson(sent, attached = snaps.map { it.second }.toSet()))
             .put("images", HesperaApi.imagesJson(snaps)).put("local_time", localTime).put("group", HesperaApi.groupJson(group, 20))
+            .put("page", withContext(Dispatchers.IO) { ProfileStore(ctx).pageJson(withPhoto = true) })
         val r = AuroraApi.post(p.serverUrl, "/est/chat", p.token, body)
         return Reply(r.optString("reply"), strings(r.optJSONArray("to_group")), longs(r.optJSONArray("tasks_new")),
-            longs(r.optJSONArray("tasks_redo")), r.optJSONArray("trace")?.toString() ?: "", strings(r.optJSONArray("tasks_refused")))
+            longs(r.optJSONArray("tasks_redo")), r.optJSONArray("trace")?.toString() ?: "", strings(r.optJSONArray("tasks_refused")),
+            changesFromJson(r.optJSONArray("changes")))
     }
 
-    data class Wake(val message: String?, val wakeMin: Int?, val toGroup: List<String>, val tasksNew: List<Long>, val tasksRedo: List<Long>, val trace: String)
+    data class Wake(val message: String?, val wakeMin: Int?, val toGroup: List<String>, val tasksNew: List<Long>, val tasksRedo: List<Long>, val trace: String,
+                    val changes: List<HesperaChange> = emptyList())
 
     suspend fun wake(ctx: Context, history: List<ChatMessage>, group: List<ChatMessage>, localTime: String, gapMin: Long, unanswered: Int): Wake {
         val p = AppPrefs(ctx)
         val body = JSONObject().put("messages", HesperaApi.msgsJson(history, 50)).put("local_time", localTime)
             .put("gap_minutes", gapMin).put("unanswered", unanswered).put("group", HesperaApi.groupJson(group, 20))
+            .put("page", ProfileStore(ctx).pageJson())
         val r = AuroraApi.post(p.serverUrl, "/est/wake", p.token, body)
         val wake = if (r.has("wake_min")) r.optInt("wake_min", 0).takeIf { it > 0 } else null
         val msg = if (r.optBoolean("skip", false)) null else r.optString("message", "").trim().ifBlank { null }
         return Wake(msg, wake, strings(r.optJSONArray("to_group")), longs(r.optJSONArray("tasks_new")), longs(r.optJSONArray("tasks_redo")),
-            r.optJSONArray("trace")?.toString() ?: "")
+            r.optJSONArray("trace")?.toString() ?: "", changesFromJson(r.optJSONArray("changes")))
+    }
+
+    suspend fun profile(ctx: Context): EstProfile {
+        val p = AppPrefs(ctx)
+        val r = AuroraApi.get(p.serverUrl, "/est/profile", p.token)
+        val m = r.optJSONObject("mood")
+        val f = r.optJSONArray("fields") ?: JSONArray()
+        val ps = r.optJSONArray("posts") ?: JSONArray()
+        val ep = r.optJSONArray("episodes") ?: JSONArray()
+        return EstProfile(
+            r.optDouble("born", 0.0), r.optString("status"),
+            EstMood(m?.optString("word") ?: "", m?.optString("why") ?: "", m?.optDouble("at", 0.0) ?: 0.0),
+            (0 until f.length()).map { f.getJSONObject(it) }.map { it.optString("field") to it.optString("value") },
+            (0 until ps.length()).map { serverPostFromJson(ps.getJSONObject(it)) },
+            strings(r.optJSONArray("notes")),
+            (0 until ep.length()).map { ep.getJSONObject(it) }.map { EstEpisode(it.optDouble("at"), it.optString("text")) },
+            r.optInt("notes_n"), r.optInt("episodes_n")
+        )
+    }
+
+    suspend fun reflect(ctx: Context, history: List<ChatMessage>, upto: String) {
+        val p = AppPrefs(ctx)
+        AuroraApi.post(p.serverUrl, "/est/reflect", p.token, JSONObject().put("messages", HesperaApi.msgsJson(history, 80)).put("upto", upto))
     }
 
     suspend fun tasks(ctx: Context): List<EstTask> {
@@ -258,6 +296,7 @@ object EstEngine {
         val gap = ((now - (history.lastOrNull()?.time ?: now)) / 60_000L).coerceAtLeast(0)
         val w = EstApi.wake(ctx, history, group, nowTimeLine(history), gap, store.unanswered)
         store.nextWake = now + (w.wakeMin ?: DEFAULT_WAKE_MIN).coerceAtLeast(30) * 60_000L
+        PageSync.apply(ctx, w.changes, who = WHO_EST)
         w.toGroup.forEach { toGroup(ctx, it) }
         dispatch(ctx, w.tasksNew + w.tasksRedo)
         val msg = w.message ?: return (w.toGroup.firstOrNull()?.let { "в общий чат: $it" }).also { EstBus.signal() }
@@ -273,7 +312,7 @@ object EstNotifications {
     private const val CHANNEL = "est_messages"
     private const val NOTIF_ID = 2003
 
-    fun show(ctx: Context, text: String) {
+    fun show(ctx: Context, text: String, target: String = "est") {
         val nm = ctx.getSystemService(android.app.NotificationManager::class.java)
         if (nm.getNotificationChannel(CHANNEL) == null) {
             nm.createNotificationChannel(android.app.NotificationChannel(CHANNEL, "Сообщения Эст", android.app.NotificationManager.IMPORTANCE_DEFAULT))
@@ -284,7 +323,7 @@ object EstNotifications {
         val open = android.app.PendingIntent.getActivity(
             ctx, 3, android.content.Intent(ctx, MainActivity::class.java).apply {
                 flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP
-                putExtra("open", "est")
+                putExtra("open", target)
             },
             android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT
         )
@@ -322,6 +361,60 @@ class EstViewModel(app: Application) : AndroidViewModel(app) {
     var wakeOn by mutableStateOf(store.wakeOn)
         private set
     val avatarFile: File get() = store.avatarFile
+    var profile by mutableStateOf(EstProfile())
+        private set
+    val nextWakeAt: Long get() = store.nextWake
+
+    fun refreshProfile() {
+        if (prefs.token.isBlank()) return
+        viewModelScope.launch { runCatching { EstApi.profile(ctx) }.onSuccess { profile = it } }
+    }
+
+    private fun updatePost(id: Long, f: (HesperaPost) -> HesperaPost) {
+        profile = profile.copy(posts = profile.posts.map { if (it.id == id) f(it) else it })
+    }
+
+    /** Мой лайк её посту. */
+    fun likePost(post: HesperaPost) {
+        val on = !post.liked
+        updatePost(post.id) { it.copy(liked = on) }
+        viewModelScope.launch {
+            runCatching { HesperaApi.like(prefs.serverUrl, prefs.token, post.id, on, owner = WHO_EST) }.onFailure {
+                updatePost(post.id) { it.copy(liked = !on) }
+                error = "Лайк не дошёл: ${it.message ?: "нет связи"}"
+            }
+        }
+    }
+
+    fun commentPost(post: HesperaPost, text: String) {
+        val t = text.replace(Regex("\\s+"), " ").trim().take(COMMENT_MAX)
+        if (t.isEmpty()) return
+        val mine = PostComment(AUTHOR_ME, t, System.currentTimeMillis())
+        updatePost(post.id) { it.copy(comments = it.comments + mine) }
+        viewModelScope.launch {
+            runCatching { HesperaApi.comment(prefs.serverUrl, prefs.token, post.id, t, owner = WHO_EST) }
+                .onSuccess { cs -> updatePost(post.id) { it.copy(comments = cs) } }
+                .onFailure { updatePost(post.id) { p -> p.copy(comments = p.comments - mine) }; error = "Комментарий не дошёл: ${it.message ?: "нет связи"}" }
+        }
+    }
+
+    fun deleteComment(post: HesperaPost, c: PostComment) {
+        if (c.who != AUTHOR_ME) return
+        updatePost(post.id) { it.copy(comments = it.comments - c) }
+        viewModelScope.launch {
+            runCatching { HesperaApi.comment(prefs.serverUrl, prefs.token, post.id, "", deleteAt = c.at, owner = WHO_EST) }.onFailure { refreshProfile() }
+        }
+    }
+
+    /** Раз в 30 сообщений она пересказывает разговор себе в память. */
+    private fun maybeReflect() {
+        val fresh = chat.filter { it.time > store.reflected && it.role != "system" }
+        if (fresh.size < 30) return
+        val upto = fresh.last().time
+        viewModelScope.launch {
+            runCatching { EstApi.reflect(ctx, fresh, "est-$upto") }.onSuccess { store.reflected = upto; refreshProfile() }
+        }
+    }
 
     init {
         EstAvatarState.version = store.avatarV
@@ -329,6 +422,7 @@ class EstViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { EstBus.flow.collect { reload() } }
         viewModelScope.launch { HesperaBus.flow.collect { refreshTasks() } }
         refreshTasks()
+        refreshProfile()
     }
 
     fun reload() {
@@ -409,12 +503,15 @@ class EstViewModel(app: Application) : AndroidViewModel(app) {
                 val g = synchronized(HesperaStore.LOCK) { HesperaStore(ctx).group() }
                 val r = EstApi.chat(ctx, history, g, nowTimeLine(history))
                 val note = if (r.refused.isNotEmpty()) "\n\n· не поставлено: " + r.refused.joinToString("; ") else ""
-                chat.add(ChatMessage("assistant", (r.text.ifBlank { if (r.toGroup.isNotEmpty()) "· сказала в общем чате" else "…" }), trace = encodeHesperaTrace(r.trace, emptyList())))
+                chat.add(ChatMessage("assistant", (r.text.ifBlank { if (r.toGroup.isNotEmpty()) "· сказала в общем чате" else "…" }), trace = encodeHesperaTrace(r.trace, r.changes)))
                 if (note.isNotBlank()) chat.add(ChatMessage("system", note.trim().removePrefix("· ")))
                 synchronized(EstStore.LOCK) { store.saveChat(chat.toList()) }
                 r.toGroup.forEach { EstEngine.toGroup(ctx, it) }
                 EstEngine.dispatch(ctx, r.tasksNew + r.tasksRedo)
+                PageSync.apply(ctx, r.changes, notify = false, who = WHO_EST)
                 refreshTasks()
+                if (r.changes.isNotEmpty()) refreshProfile()
+                maybeReflect()
             } catch (e: Exception) {
                 error = e.message ?: "Нет связи"
             } finally {

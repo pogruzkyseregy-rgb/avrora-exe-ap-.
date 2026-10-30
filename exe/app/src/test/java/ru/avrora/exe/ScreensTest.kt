@@ -163,6 +163,10 @@ class ScreensTest {
         repeat(3) { rule.onRoot().performTouchInput { swipeDown(startY = height * 0.2f, endY = height * 0.9f, durationMillis = 300) }; settle() }
         tap("ГЕСПЕРА")
         shot("${theme}_8_hespera_dossier")
+        tap("ЭСТ")
+        shot("${theme}_10_est_profile")
+        tap("Ядро")
+        shot("${theme}_10b_est_core")
         tap("ЧАТ")
         tap("АВРОРА")
         shot("${theme}_2_aurora")

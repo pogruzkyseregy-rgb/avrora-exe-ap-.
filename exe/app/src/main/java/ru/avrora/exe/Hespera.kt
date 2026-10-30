@@ -40,7 +40,14 @@ data class HesperaChange(val kind: String, val field: String, val value: String,
 data class HesperaField(val field: String, val value: String, val why: String, val at: Double)
 data class HesperaPost(
     val id: Long, val at: Double, val text: String, val media: String = "", val liked: Boolean = false,
-    val likedAurora: Boolean = false, val comments: List<PostComment> = emptyList()
+    val likedAurora: Boolean = false, val comments: List<PostComment> = emptyList(),
+    val likedHespera: Boolean = false, val likedEst: Boolean = false
+)
+
+/** Пост с сервера (страница Гесперы или Эст). */
+fun serverPostFromJson(o: JSONObject): HesperaPost = HesperaPost(
+    o.optLong("id"), o.optDouble("at"), o.optString("text"), o.optString("media"), o.optBoolean("liked"),
+    o.optBoolean("liked_aurora"), commentsFromJson(o.optJSONArray("comments")), o.optBoolean("liked_hespera"), o.optBoolean("liked_est")
 )
 
 /** Комментарии с сервера: время там в секундах. */
@@ -85,7 +92,8 @@ fun changeLabel(c: HesperaChange): String = when (c.kind) {
     "статус" -> "статус: ${c.value}"
     "пост" -> "пост на странице: ${c.value}"
     "аватар" -> "сменила аватар"
-    "лайк" -> if (c.field.isBlank()) "лайк не поставлен: ${c.value}" else "лайкнула пост: ${c.value}"
+    "лайк" -> if (c.value.startsWith("не нашла")) "лайк не поставлен: ${c.value}" else "лайкнула пост: ${c.value}"
+    "настроение" -> "настроение: ${c.value}" + if (c.why.isNotBlank()) " — ${c.why}" else ""
     "коммент" -> "комментарий" + (if (c.why.isNotBlank()) " ${c.why}" else "") + ": ${c.value}"
     else -> "${c.kind}: ${c.value}"
 }
@@ -182,19 +190,19 @@ object HesperaApi {
         val changes = changesFromJson(ch)
         val times = if (ch == null) emptyList() else (0 until ch.length()).map { ch.getJSONObject(it).optDouble("at") }
         val posts = r.optJSONArray("posts")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) }
-            .map { HesperaPost(it.optLong("id"), it.optDouble("at"), it.optString("text"), it.optString("media"), it.optBoolean("liked"),
-                it.optBoolean("liked_aurora"), commentsFromJson(it.optJSONArray("comments"))) } } ?: emptyList()
+            .map { serverPostFromJson(it) } } ?: emptyList()
         return HesperaProfile(r.optString("status"), r.optDouble("born"), fields, lists, changes, times, posts,
             r.optInt("notes"), r.optInt("episodes"), r.optLong("avatar_v"))
     }
 
-    suspend fun like(base: String, token: String, id: Long, on: Boolean) {
-        AuroraApi.post(base, "/hespera/like", token, JSONObject().put("id", id).put("on", on))
+    suspend fun like(base: String, token: String, id: Long, on: Boolean, owner: String = WHO_HESPERA) {
+        AuroraApi.post(base, "/hespera/like", token, JSONObject().put("id", id).put("on", on).put("owner", owner))
     }
 
     /** Комментарий под её постом (или удаление своего: deleteAt — время комментария). Возвращает комментарии поста. */
-    suspend fun comment(base: String, token: String, id: Long, text: String, who: String = AUTHOR_ME, snippet: String = "", deleteAt: Long = 0L): List<PostComment> {
-        val body = JSONObject().put("id", id).put("text", text).put("who", who).put("snippet", snippet)
+    suspend fun comment(base: String, token: String, id: Long, text: String, who: String = AUTHOR_ME, snippet: String = "", deleteAt: Long = 0L,
+                        owner: String = ""): List<PostComment> {
+        val body = JSONObject().put("id", id).put("text", text).put("who", who).put("snippet", snippet).put("owner", owner)
         if (deleteAt > 0) body.put("delete_at", deleteAt / 1000.0)
         return commentsFromJson(AuroraApi.post(base, "/hespera/comment", token, body).optJSONArray("comments"))
     }
@@ -207,7 +215,8 @@ object HesperaApi {
     }
 
     data class GroupReply(val who: String, val text: String, val private: List<String> = emptyList(), val markers: List<String> = emptyList(),
-                          val tasksNew: List<Long> = emptyList(), val tasksRedo: List<Long> = emptyList())
+                          val tasksNew: List<Long> = emptyList(), val tasksRedo: List<Long> = emptyList(),
+                          val estChanges: List<HesperaChange> = emptyList())
 
     suspend fun group(
         ctx: Context, base: String, token: String, history: List<ChatMessage>, memory: String, persona: String, localTime: String,
@@ -224,7 +233,7 @@ object HesperaApi {
         val r = AuroraApi.post(base, "/group/chat", token, body)
         val replies = r.optJSONArray("replies")?.let { arr -> (0 until arr.length()).map { arr.getJSONObject(it) }
             .map { GroupReply(it.optString("who"), it.optString("text"), strings(it.optJSONArray("private")), strings(it.optJSONArray("markers")),
-                ids(it.optJSONArray("tasks_new")), ids(it.optJSONArray("tasks_redo"))) } } ?: emptyList()
+                ids(it.optJSONArray("tasks_new")), ids(it.optJSONArray("tasks_redo")), changesFromJson(it.optJSONArray("est_changes"))) } } ?: emptyList()
         return Pair(replies, changesFromJson(r.optJSONArray("changes")))
     }
 }
@@ -404,6 +413,7 @@ object GroupEngine {
         // лайки и комментарии к постам: Авроры — её маркерами, Гесперы — из перемен
         replies.filter { it.who == WHO_AURORA && it.markers.isNotEmpty() }.forEach { ExeMarkers.apply(ctx, it.markers.joinToString("\n"), now) }
         PageSync.apply(ctx, changes)
+        replies.filter { it.who == WHO_EST }.forEach { PageSync.apply(ctx, it.estChanges, who = WHO_EST) }
         HesperaBus.signal()
         // Эст поставила задачи в общем чате — исполнительницы берутся сразу
         if (dispatchTasks) EstEngine.dispatch(ctx, replies.flatMap { it.tasksNew + it.tasksRedo })

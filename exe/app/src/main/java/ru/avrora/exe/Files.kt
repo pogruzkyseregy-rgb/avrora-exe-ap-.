@@ -259,7 +259,7 @@ private fun FileView(who: String, path: String, f: RemoteFile, accent: Color) {
 
 /** Блок досье «Папка на сервере». */
 fun filesItem(who: String, accent: Color, onOpen: () -> Unit): DossierItem =
-    DossierItem("files", "ПАПКА НА СЕРВЕРЕ", if (who == WHO_HESPERA) "~/hespera" else "~/work", accent,
+    DossierItem("files", "ПАПКА НА СЕРВЕРЕ", when (who) { WHO_HESPERA -> "~/hespera"; WHO_EST -> "~/est"; else -> "~/work" }, accent,
         preview = { Text("▸ ▸ ·", color = accent, fontSize = 18.sp, fontFamily = FontFamily.Monospace) }
     ) {
         DetailHint("Что она сделала на своей машине: файлы, заметки, код. Только просмотр — можно открыть и скачать к себе.")

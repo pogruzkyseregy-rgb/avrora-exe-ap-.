@@ -214,7 +214,8 @@ data class PostItem(
     val likedByMe: Boolean = false,
     val likedByHer: Boolean = false,
     val likedByHesp: Boolean = false,
-    val comments: List<PostComment> = emptyList()
+    val comments: List<PostComment> = emptyList(),
+    val likedByEst: Boolean = false
 )
 
 fun whoName(who: String): String = when (who) {
@@ -268,6 +269,7 @@ fun profileContext(her: Profile, me: Profile, posts: List<PostItem>, now: Long =
                 if (it.likedByMe) add("Адонис")
                 if (it.likedByHer) add("я")
                 if (it.likedByHesp) add("Геспера")
+                if (it.likedByEst) add("Эст")
             }
             if (liked.isNotEmpty()) sb.append(" (♥ ").append(liked.joinToString(", ")).append(")")
             sb.append('\n')

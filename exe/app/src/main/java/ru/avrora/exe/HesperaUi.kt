@@ -216,7 +216,7 @@ internal fun HBubble(m: ChatMessage, who: String, showName: Boolean, hespAvatar:
                 modifier = Modifier.padding(start = 38.dp, top = 2.dp).widthIn(max = 300.dp).clickable { open = !open }
             )
         }
-        if (who == WHO_HESPERA) {
+        if (who == WHO_HESPERA || who == WHO_EST) {
             decodeHesperaChanges(m.trace).forEach { c ->
                 Text("✎ " + changeLabel(c), color = HespColor.copy(alpha = 0.85f), fontSize = 11.sp, fontStyle = FontStyle.Italic,
                     maxLines = 3, modifier = Modifier.padding(start = 38.dp, top = 2.dp).widthIn(max = 300.dp))
@@ -506,7 +506,7 @@ fun HespPostCard(hvm: HesperaViewModel, post: HesperaPost) {
         }
         if (post.text.isNotBlank()) Text(post.text, color = TextMain, fontSize = 15.sp, lineHeight = 21.sp)
         if (post.media.isNotBlank()) MediaPart(Part.Media(post.media, post.text.take(40)), HespColor) {}
-        LikeRow(HespColor, post.liked, if (post.likedAurora) listOf("Аврора") else emptyList()) { hvm.likePost(post) }
+        LikeRow(HespColor, post.liked, listOfNotNull("Аврора".takeIf { post.likedAurora }, "Эст".takeIf { post.likedEst })) { hvm.likePost(post) }
         PostComments(post.comments, HespColor, onSend = { hvm.commentPost(post, it) }, onDelete = { hvm.deleteComment(post, it) })
     }
 }

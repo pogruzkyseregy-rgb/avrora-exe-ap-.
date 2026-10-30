@@ -54,7 +54,8 @@ class ProfileStore(ctx: Context) {
             PostItem(
                 o.optString("id"), o.optString("author"), o.optString("text"), o.optString("photo"),
                 o.optLong("at"), o.optBoolean("likedByMe"), o.optBoolean("likedByHer"), o.optBoolean("likedByHesp"),
-                (0 until ca.length()).map { ca.getJSONObject(it) }.map { PostComment(it.optString("who"), it.optString("text"), it.optLong("at")) }
+                (0 until ca.length()).map { ca.getJSONObject(it) }.map { PostComment(it.optString("who"), it.optString("text"), it.optLong("at")) },
+                o.optBoolean("likedByEst")
             )
         }
     }
@@ -64,7 +65,7 @@ class ProfileStore(ctx: Context) {
         list.forEach {
             a.put(
                 JSONObject().put("id", it.id).put("author", it.author).put("text", it.text).put("photo", it.photo)
-                    .put("at", it.at).put("likedByMe", it.likedByMe).put("likedByHer", it.likedByHer).put("likedByHesp", it.likedByHesp)
+                    .put("at", it.at).put("likedByMe", it.likedByMe).put("likedByHer", it.likedByHer).put("likedByHesp", it.likedByHesp).put("likedByEst", it.likedByEst)
                     .put("comments", JSONArray().also { a -> it.comments.forEach { c -> a.put(JSONObject().put("who", c.who).put("text", c.text).put("at", c.at)) } })
             )
         }
@@ -83,6 +84,7 @@ class ProfileStore(ctx: Context) {
         if (it.id != id) it else when (who) {
             AUTHOR_ME -> it.copy(likedByMe = on)
             WHO_HESPERA -> it.copy(likedByHesp = on)
+            WHO_EST -> it.copy(likedByEst = on)
             else -> it.copy(likedByHer = on)
         }
     })
@@ -120,6 +122,7 @@ class ProfileStore(ctx: Context) {
             if (p.likedByMe) liked.put(AUTHOR_ME)
             if (p.likedByHer) liked.put(AUTHOR_HER)
             if (p.likedByHesp) liked.put(WHO_HESPERA)
+            if (p.likedByEst) liked.put(WHO_EST)
             val cs = JSONArray()
             p.comments.takeLast(6).forEach { c -> cs.put(JSONObject().put("who", c.who).put("text", c.text.take(300))) }
             a.put(JSONObject().put("id", p.id).put("author", p.author).put("text", p.text.take(600)).put("photo", p.photo.isNotBlank())
@@ -139,21 +142,22 @@ class ProfileStore(ctx: Context) {
         profileContext(profile(AUTHOR_HER), profile(AUTHOR_ME), posts(), now)
 }
 
-/** Лайки и комментарии Гесперы к постам Адониса и Авроры: сервер присылает их в changes (field — id поста). */
+/** Лайки и комментарии Гесперы или Эст к постам Адониса и Авроры: сервер присылает их в changes (field — id поста). */
 object PageSync {
-    fun apply(ctx: Context, changes: List<HesperaChange>, notify: Boolean = true) {
+    fun apply(ctx: Context, changes: List<HesperaChange>, notify: Boolean = true, who: String = WHO_HESPERA) {
         val ps = ProfileStore(ctx)
         var touched = false
         for (c in changes) {
             if (c.field.isBlank()) continue
             when (c.kind) {
-                "лайк" -> { ps.setLike(c.field, WHO_HESPERA, true); touched = true }
+                "лайк" -> { ps.setLike(c.field, who, true); touched = true }
                 "коммент" -> {
                     val before = ps.posts().firstOrNull { it.id == c.field }?.comments?.size ?: continue
-                    val p = ps.addComment(c.field, WHO_HESPERA, c.value) ?: continue
+                    val p = ps.addComment(c.field, who, c.value) ?: continue
                     touched = true
                     if (notify && p.comments.size > before && p.author == AUTHOR_ME) {
-                        HesperaNotifications.show(ctx, "Геспера под твоим постом: ${c.value.take(120)}", target = "feed")
+                        val text = "${whoName(who)} под твоим постом: ${c.value.take(120)}"
+                        if (who == WHO_EST) EstNotifications.show(ctx, text, target = "feed") else HesperaNotifications.show(ctx, text, target = "feed")
                     }
                 }
             }

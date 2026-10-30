@@ -95,6 +95,8 @@ data class CoreStyle(
 
 fun auroraCore() = CoreStyle(Glow, Violet, orbits = 3, wobble = 0.08f, speed = 1f, particles = 14, facets = 6)
 fun hesperaCore() = CoreStyle(HespColor, Glow, orbits = 4, wobble = 0.35f, speed = 1.35f, particles = 36, facets = 5)
+/** У Эст ядро как клинок: ровное, медленное, мало частиц, острые грани. */
+fun estCore() = CoreStyle(EstColor, Violet, orbits = 2, wobble = 0.02f, speed = 0.7f, particles = 8, facets = 4)
 
 /** Живое ядро: шкала, кольца, орбиты со спутниками, луч развёртки и ядро в центре. */
 @Composable

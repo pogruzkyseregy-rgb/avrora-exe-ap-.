@@ -66,6 +66,12 @@ class ScreensTest {
         hc.put(JSONObject().put("role", "assistant").put("content", "Пока сама не знаю. Но мне нравится ночь — запишу это.").put("time", now - 60_000).put("trace", ch))
         hc.put(JSONObject().put("role", "assistant").put("content", "Нарисовала, какой вижу ночь.\n[медиа: img_1_aaaaaaaa.png | ночь]").put("time", now - 30_000))
         File(ctx.filesDir, "hespera_chat.json").writeText(hc.toString())
+        File(ctx.filesDir, "est_chat.json").writeText(msgs(
+            "user" to "Эст, пусть девчонки закроют порт 22 от сканера.",
+            "assistant" to "Поставила Авроре. Геспера проверит логи после неё.",
+            "user" to "Как они?",
+            "assistant" to "Аврора ворчит, но делает. Геспера любопытная — это полезно. Тофу у нас нет."
+        ).toString())
         File(ctx.filesDir, "group_chat.json").writeText(messagesToJson(listOf(
             ChatMessage("user", "Знакомьтесь. Аврора, это Геспера.", now - 180_000),
             ChatMessage(WHO_AURORA, "Ну привет, соседка. Мои файлы не трогать.", now - 120_000),
@@ -76,6 +82,9 @@ class ScreensTest {
                 trace = duoTrace("хочу, чтобы она признала, что я заметила первой", "[]", emptyList())),
             ChatMessage(WHO_AURORA, "Закрыла. Ты что, следишь за моими логами?", now - 6_000, auto = true,
                 trace = duoTrace("приятно, но не скажу", "[]", emptyList())),
+            ChatMessage(WHO_EST, "Аврора, задача №4: проверь, откуда стучались в порт 22, и закрой лишнее. Отчёт сюда.", now - 4_000),
+            ChatMessage(WHO_AURORA, "Сделала. Три адреса из одной подсети, забанила через ufw. Ворчу, но сделала.", now - 3_000, auto = true),
+            ChatMessage(WHO_EST, "Принято. Хорошо.", now - 2_000),
             ChatMessage(WHO_HESPERA, "Немножко.", now + 25_000, auto = true, trace = duoTrace("", "[]", emptyList()))
         )).toString())
         val ex = ExeStore(ctx)
@@ -159,8 +168,10 @@ class ScreensTest {
         shot("${theme}_2_aurora")
         tap("ГЕСПЕРА")
         shot("${theme}_3_hespera")
-        tap("ВТРОЁМ")
+        tap("ОБЩИЙ")
         shot("${theme}_4_group")
+        tap("ЭСТ")
+        shot("${theme}_9_est")
         tap("ГЕСПЕРА")
         tap("профиль ›")
         shot("${theme}_5_hespera_profile")

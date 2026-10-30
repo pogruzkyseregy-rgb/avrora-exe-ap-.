@@ -218,9 +218,10 @@ data class PostItem(
 )
 
 fun whoName(who: String): String = when (who) {
-    AUTHOR_ME -> "Адонис"
+    AUTHOR_ME, "user" -> "Адонис"
     AUTHOR_HER -> "Аврора"
     WHO_HESPERA -> "Геспера"
+    WHO_EST -> "Эст"
     else -> who
 }
 

@@ -76,16 +76,16 @@ import java.util.Locale
 private val hTime = SimpleDateFormat("HH:mm", Locale.getDefault())
 private val hDay = SimpleDateFormat("d MMM, HH:mm", Locale("ru"))
 
-/** Переключатель над чатом: Аврора, Геспера или все трое. */
+/** Переключатель над чатом: Аврора, Геспера, Эст или общий. */
 @Composable
 fun ChatSwitcher(selected: String, onSelect: (String) -> Unit) {
     Row(
         Modifier.fillMaxWidth().background(Panel).padding(horizontal = 10.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        listOf(WHO_AURORA to "АВРОРА", WHO_HESPERA to "ГЕСПЕРА", WHO_GROUP to "ВТРОЁМ").forEach { (id, label) ->
+        listOf(WHO_AURORA to "АВРОРА", WHO_HESPERA to "ГЕСПЕРА", WHO_EST to "ЭСТ", WHO_GROUP to "ОБЩИЙ").forEach { (id, label) ->
             val on = id == selected
-            val accent = when (id) { WHO_AURORA -> Glow; WHO_HESPERA -> HespColor; else -> Violet }
+            val accent = when (id) { WHO_AURORA -> Glow; WHO_HESPERA -> HespColor; WHO_EST -> EstColor; else -> Violet }
             Box(
                 Modifier
                     .weight(1f)
@@ -144,22 +144,22 @@ private fun HespHeader(hvm: HesperaViewModel, onProfile: () -> Unit) {
     }
 }
 
-/** Пузырь сообщения в чатах Гесперы. who: user, hespera, aurora, system. */
+/** Пузырь сообщения в чатах Гесперы, Эст и общем. who: user, hespera, aurora, est, system. */
 @Composable
-private fun HBubble(m: ChatMessage, who: String, showName: Boolean, hespAvatar: ByteArray?, onOpen: (Any) -> Unit = {}, thoughts: Boolean = false) {
+internal fun HBubble(m: ChatMessage, who: String, showName: Boolean, hespAvatar: ByteArray?, onOpen: (Any) -> Unit = {}, thoughts: Boolean = false) {
     if (who == "system") {
         Text("· ${m.content}", color = TextDim, fontSize = 12.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(start = 6.dp))
         return
     }
     val mine = who == "user"
-    val accent = when (who) { "user" -> Violet; WHO_AURORA -> Glow; else -> HespColor }
+    val accent = when (who) { "user" -> Violet; WHO_AURORA -> Glow; WHO_EST -> EstColor; else -> HespColor }
     val shape = bubbleShape(mine)
     Column(Modifier.fillMaxWidth(), horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
         if (!mine && showName) {
-            Text(if (who == WHO_AURORA) "АВРОРА" else "ГЕСПЕРА", color = accent, fontSize = 10.sp, fontFamily = FontFamily.Monospace,
+            Text(whoName(who).uppercase(), color = accent, fontSize = 10.sp, fontFamily = FontFamily.Monospace,
                 modifier = Modifier.padding(start = 38.dp, bottom = 2.dp))
         }
-        val tools = if (who == WHO_HESPERA) decodeHesperaTools(m.trace) else emptyList()
+        val tools = if (m.trace.startsWith("{")) decodeHesperaTools(m.trace) else emptyList()
         tools.forEach { t ->
             Text("⌁ ${t.kind}: ${t.arg.take(70)}" + if (t.ok) "" else " — не вышло", color = TextDim, fontSize = 11.sp,
                 fontFamily = FontFamily.Monospace, maxLines = 2, modifier = Modifier.padding(start = 38.dp, bottom = 2.dp))
@@ -167,8 +167,12 @@ private fun HBubble(m: ChatMessage, who: String, showName: Boolean, hespAvatar: 
         Row(verticalAlignment = Alignment.Bottom) {
             if (!mine) {
                 Box(Modifier.size(30.dp)) {
-                    if (showName || who == WHO_HESPERA) {
-                        if (who == WHO_AURORA) Avatar(30.dp) else HespAvatar(hespAvatar, 30.dp)
+                    if (showName || who == WHO_HESPERA || who == WHO_EST) {
+                        when (who) {
+                            WHO_AURORA -> Avatar(30.dp)
+                            WHO_EST -> EstAvatar(30.dp)
+                            else -> HespAvatar(hespAvatar, 30.dp)
+                        }
                     }
                 }
                 Spacer(Modifier.width(6.dp))
@@ -222,7 +226,7 @@ private fun HBubble(m: ChatMessage, who: String, showName: Boolean, hespAvatar: 
 }
 
 @Composable
-private fun HInput(
+internal fun HInput(
     sending: Boolean, placeholder: String, accent: Color, onFocus: (Boolean) -> Unit,
     onAudio: (ByteArray, String, String, Boolean) -> Unit, hearing: String?, onSend: (String, Uri?) -> Unit
 ) {
@@ -275,7 +279,7 @@ private fun HInput(
 }
 
 @Composable
-private fun ErrorBar(err: String?, onRetry: () -> Unit, onClose: () -> Unit) {
+internal fun ErrorBar(err: String?, onRetry: () -> Unit, onClose: () -> Unit) {
     if (err == null) return
     Row(Modifier.fillMaxWidth().background(Panel).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(err, color = MaterialTheme.colorScheme.error, fontSize = 13.sp, modifier = Modifier.weight(1f))
@@ -349,17 +353,22 @@ fun GroupChatPane(hvm: HesperaViewModel, vm: ChatViewModel, onFocus: (Boolean) -
             Avatar(32.dp)
             Spacer(Modifier.width(4.dp))
             HespAvatar(hvm.avatar, 32.dp)
+            Spacer(Modifier.width(4.dp))
+            EstAvatar(32.dp)
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                Text("ВТРОЁМ", color = Violet, fontSize = 15.sp, fontFamily = FontFamily.Monospace)
+                Text("ОБЩИЙ", color = Violet, fontSize = 15.sp, fontFamily = FontFamily.Monospace)
+                val work = EstEngine.working
                 Text(
                     when {
                         hvm.groupSending -> "● отвечают"
+                        work != null -> "● $work"
                         pending -> "● разговаривают вдвоём"
                         hvm.duoBusy -> "● собираются поговорить…"
-                        else -> "Аврора, Геспера и ты"
+                        else -> "Аврора, Геспера, Эст и ты"
                     },
-                    color = if (pending) Glow else TextDim, fontSize = 11.sp, fontFamily = FontFamily.Monospace
+                    color = if (pending) Glow else if (work != null) EstColor else TextDim, fontSize = 11.sp, fontFamily = FontFamily.Monospace,
+                    maxLines = 1
                 )
             }
             IconButton(onClick = { settings = true }) { Icon(Icons.Default.Settings, contentDescription = "Без тебя", tint = TextDim) }
@@ -370,8 +379,8 @@ fun GroupChatPane(hvm: HesperaViewModel, vm: ChatViewModel, onFocus: (Boolean) -
             contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             if (shown.isEmpty()) item {
-                Text("Общий чат. Обратись по имени — ответит та, к кому обращаешься, а вторая может вставить слово. " +
-                    "Иногда они разговаривают здесь вдвоём, без тебя.", color = TextDim, fontSize = 14.sp, modifier = Modifier.padding(top = 30.dp, start = 6.dp))
+                Text("Общий чат. Обратись по имени — ответит та, к кому обращаешься. Аврора и Геспера иногда разговаривают здесь вдвоём, " +
+                    "а Эст раздаёт им задачи — отчёты появляются здесь же.", color = TextDim, fontSize = 14.sp, modifier = Modifier.padding(top = 30.dp, start = 6.dp))
             }
             itemsIndexed(shown) { i, m ->
                 val prev = shown.getOrNull(i - 1)?.role
@@ -379,12 +388,12 @@ fun GroupChatPane(hvm: HesperaViewModel, vm: ChatViewModel, onFocus: (Boolean) -
             }
             if (hvm.groupSending) item { Text("пишут…", color = TextDim, fontSize = 13.sp, modifier = Modifier.padding(start = 38.dp)) }
             else if (typing != null) item {
-                Text((if (typing == WHO_AURORA) "Аврора" else "Геспера") + " печатает…", color = if (typing == WHO_AURORA) Glow else HespColor,
+                Text(whoName(typing) + " печатает…", color = if (typing == WHO_AURORA) Glow else HespColor,
                     fontSize = 13.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(start = 38.dp))
             }
         }
         ErrorBar(hvm.error, onRetry = { hvm.retryGroup(vm) }, onClose = hvm::clearError)
-        HInput(hvm.groupSending, if (pending) "Вмешаться в разговор" else "Написать обеим", Violet, onFocus,
+        HInput(hvm.groupSending, if (pending) "Вмешаться в разговор" else "Написать всем", Violet, onFocus,
             onAudio = { b, m, n, v -> hvm.sendAudio(b, m, n, v, vm) }, hearing = hvm.hearing) { t, ph -> hvm.sendGroup(t, vm, ph) }
     }
     if (settings) DuoSettingsDialog(hvm) { settings = false }

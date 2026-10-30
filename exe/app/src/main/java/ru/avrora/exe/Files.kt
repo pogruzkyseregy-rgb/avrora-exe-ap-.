@@ -91,7 +91,7 @@ object FilesApi {
 
     /** В «Загрузки/AVRORA/<чья папка>». */
     fun saveToDownloads(ctx: Context, src: File, name: String, who: String): Boolean = runCatching {
-        val sub = if (who == WHO_HESPERA) "Hespera" else "Aurora"
+        val sub = when (who) { WHO_HESPERA -> "Hespera"; WHO_EST -> "Est"; else -> "Aurora" }
         if (Build.VERSION.SDK_INT >= 29) {
             val values = ContentValues().apply {
                 put(MediaStore.Downloads.DISPLAY_NAME, name)
@@ -124,7 +124,7 @@ private fun human(size: Long): String = when {
 @Composable
 fun FileBrowserDialog(who: String, onClose: () -> Unit) {
     val ctx = LocalContext.current
-    val accent = if (who == WHO_HESPERA) HespColor else Glow
+    val accent = when (who) { WHO_HESPERA -> HespColor; WHO_EST -> EstColor; else -> Glow }
     var path by remember { mutableStateOf("") }
     var items by remember { mutableStateOf<List<RemoteFile>>(emptyList()) }
     var note by remember { mutableStateOf("") }
@@ -151,7 +151,7 @@ fun FileBrowserDialog(who: String, onClose: () -> Unit) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Назад", tint = TextDim)
                     }
                     Column(Modifier.weight(1f)) {
-                        Text((if (who == WHO_HESPERA) "ГЕСПЕРА · ~/hespera" else "АВРОРА · ~/work"), color = accent, fontSize = 14.sp, fontFamily = FontFamily.Monospace)
+                        Text(when (who) { WHO_HESPERA -> "ГЕСПЕРА · ~/hespera"; WHO_EST -> "ЭСТ · ~/est"; else -> "АВРОРА · ~/work" }, color = accent, fontSize = 14.sp, fontFamily = FontFamily.Monospace)
                         Text(
                             "/" + (open?.second ?: path), color = TextDim, fontSize = 11.sp, fontFamily = FontFamily.Monospace,
                             maxLines = 1, overflow = TextOverflow.Ellipsis

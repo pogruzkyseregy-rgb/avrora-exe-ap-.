@@ -71,7 +71,7 @@ private data class Pending(val tag: String, val model: Any, val isSticker: Boole
 private data class QuoteDraft(val forward: Boolean, val who: String, val preview: String, val marker: String)
 
 @Composable
-fun ChatScreen(vm: ChatViewModel = viewModel(), hvm: HesperaViewModel = viewModel()) {
+fun ChatScreen(vm: ChatViewModel = viewModel(), hvm: HesperaViewModel = viewModel(), evm: EstViewModel = viewModel()) {
     val ctx = LocalContext.current
     val keyboard = LocalSoftwareKeyboardController.current
     val listState = rememberLazyListState()
@@ -149,6 +149,7 @@ fun ChatScreen(vm: ChatViewModel = viewModel(), hvm: HesperaViewModel = viewMode
             "chat" -> { booted = true; tab = Tab.Chat; screen = Screen.Chat; hvm.selectChat(WHO_AURORA) }
             "hespera" -> { booted = true; tab = Tab.Chat; screen = Screen.Chat; hvm.selectChat(WHO_HESPERA) }
             "group" -> { booted = true; tab = Tab.Chat; screen = Screen.Chat; hvm.selectChat(WHO_GROUP) }
+            "est" -> { booted = true; tab = Tab.Chat; screen = Screen.Chat; hvm.selectChat(WHO_EST); evm.reload() }
             "feed" -> { booted = true; tab = Tab.Feed; screen = Screen.Chat; vm.reloadExe(); hvm.refreshProfile() }
         }
         vm.openRequest = null
@@ -226,6 +227,10 @@ fun ChatScreen(vm: ChatViewModel = viewModel(), hvm: HesperaViewModel = viewMode
             }
             if (hvm.chatWho == WHO_GROUP) {
                 GroupChatPane(hvm, vm, onFocus = { hespFocused = it }, onOpen = { viewer = it })
+                return@Column
+            }
+            if (hvm.chatWho == WHO_EST) {
+                EstChatPane(evm, onFocus = { hespFocused = it }, onOpen = { viewer = it })
                 return@Column
             }
             Header(

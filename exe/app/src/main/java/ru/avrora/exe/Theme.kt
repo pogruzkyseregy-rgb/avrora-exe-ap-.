@@ -31,6 +31,8 @@ data class Palette(
     val terminal: Color,
     /** Цвет Гесперы. */
     val hesp: Color = Color(0xFFF7A8D8),
+    /** Цвет Эст: серебро клинка. */
+    val est: Color = Color(0xFFC9D6E8),
     /** Светлая тема: тёмный текст на светлом. */
     val light: Boolean = false,
     /** Рисунок рамок: soft — мягкие уголки, mecha — техно-панели со срезами и болтами, hud — тонкий HUD с точками. */
@@ -61,14 +63,14 @@ val THEMES = listOf(
         Color(0xFFE8E6E1), Color(0xFFFBFAF8), Color(0xFFFFFFFF), Color(0xFFDDDAD3),
         Color(0xFFD7263D), Color(0xFF1C1C1F), Color(0xFFE4404F),
         Color(0xFF141416), Color(0xFF6F6E73), Color(0xFFB9B7B1), Color(0xFFDFDDD8),
-        hesp = Color(0xFF2F5D8C), light = true, frame = "mecha"
+        hesp = Color(0xFF2F5D8C), est = Color(0xFF55606E), light = true, frame = "mecha"
     ),
     Palette(
         "coral", "Коралл", "тёмная: чёрный и коралловый HUD, тонкие рамки и точки",
         Color(0xFF070606), Color(0xFF110C0B), Color(0xFF170F0D), Color(0xFF2A1410),
         Color(0xFFFF6B57), Color(0xFFFFC2B4), Color(0xFFFF3D3D),
         Color(0xFFF6EAE6), Color(0xFF8E726B), Color(0xFF3B2421), Color(0xFF0A0605),
-        hesp = Color(0xFFFFD27A), frame = "hud"
+        hesp = Color(0xFFFFD27A), est = Color(0xFFCFD8E3), frame = "hud"
     )
 )
 
@@ -90,6 +92,7 @@ val Edge: Color get() = AppTheme.current.edge
 val Terminal: Color get() = AppTheme.current.terminal
 val Magenta: Color get() = AppTheme.current.magenta
 val HespColor: Color get() = AppTheme.current.hesp
+val EstColor: Color get() = AppTheme.current.est
 val ErrorRed = Color(0xFFFF8F8F)
 
 fun auroraColors() = if (AppTheme.current.light) androidx.compose.material3.lightColorScheme(

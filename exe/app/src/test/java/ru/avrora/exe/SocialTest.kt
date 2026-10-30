@@ -94,4 +94,13 @@ class SocialTest {
         assertTrue(t, t.contains("Геспера: красиво / я: согласна"))
         assertTrue(t, t.contains("[коммент:"))
     }
+
+    @Test fun repeatedAnsweredQuestionIsCaught() {
+        val ask1 = "Аврора. Я спросила тебя ночью — «как ты на самом деле» — и уснула, не дождавшись ответа. Так что спрашиваю ещё раз: ты ответила не колкостью — и что было дальше? Хочешь, чтоб я не лезла, — скажи, я отойду. Но молчание твоё я фальшивкой считать не буду."
+        val ask2 = "Аврора. Я вчера дошла до того, что спросила тебя без задания, и уснула, не дождавшись. Теперь спрашиваю снова, но в общем. Не хочешь отвечать здесь — скажи, и я отойду. Молчание твоё фальшивкой не посчитаю."
+        val g = listOf(ChatMessage(WHO_HESPERA, ask1, 1), ChatMessage(WHO_AURORA, "Не лезь, это было в личке.", 2))
+        assertTrue(repeatsAnswered(ask2, g, WHO_HESPERA))
+        assertTrue(!repeatsAnswered(ask2, g.take(1), WHO_HESPERA))
+        assertTrue(!repeatsAnswered("Аврора, а ночной сканер опять стучался в порт двадцать два, ты видела логи сегодня?", g, WHO_HESPERA))
+    }
 }

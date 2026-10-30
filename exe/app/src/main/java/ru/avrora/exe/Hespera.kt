@@ -132,7 +132,7 @@ object HesperaApi {
         val a = JSONArray()
         val now = System.currentTimeMillis()
         list.filter { it.role != "system" && it.time <= now }.takeLast(limit).forEach {
-            a.put(JSONObject().put("speaker", if (it.role == "user") "adonis" else it.role).put("content", said(it, attached)))
+            a.put(JSONObject().put("speaker", if (it.role == "user") "adonis" else it.role).put("content", said(it, attached)).put("at", it.time))
         }
         return a
     }
@@ -350,14 +350,23 @@ fun splitToGroup(text: String): Pair<String, List<String>> {
 object GroupEngine {
     private val mutex = kotlinx.coroutines.sync.Mutex()
 
-    /** Последнее из общего чата — Авроре в память для лички и пробуждений. */
+    /** Последнее из общего чата — Авроре в память для лички и пробуждений. С временем и тем, что ей ответили после её реплики. */
     fun groupBlock(ctx: Context): String {
         val now = System.currentTimeMillis()
         val g = synchronized(HesperaStore.LOCK) { HesperaStore(ctx).group() }.filter { it.role != "system" && it.time <= now }.takeLast(20)
         if (g.isEmpty()) return ""
         val names = mapOf("user" to "Адонис", WHO_AURORA to "Ты", WHO_HESPERA to "Геспера")
-        return "ОБЩИЙ ЧАТ НА ТРОИХ — последние реплики (ты там тоже была, это та же ты):\n" +
-            g.joinToString("\n") { "${names[it.role] ?: it.role}: ${TAG_RE.replace(it.content, "[фото]").take(400)}" }
+        fun ago(t: Long) = humanGap(now - t) + " назад"
+        val sb = StringBuilder("ОБЩИЙ ЧАТ НА ТРОИХ — последние реплики, новые внизу (ты там тоже была, это та же ты):\n")
+        sb.append(g.joinToString("\n") { "${names[it.role] ?: it.role} (${ago(it.time)}): ${TAG_RE.replace(it.content, "[фото]").take(400)}" })
+        val last = g.indexOfLast { it.role == WHO_AURORA }
+        val after = if (last >= 0) g.drop(last + 1).filter { it.content.isNotBlank() } else emptyList()
+        if (after.isNotEmpty()) {
+            sb.append("\n\nПОСЛЕ ТВОЕЙ ПОСЛЕДНЕЙ РЕПЛИКИ В ОБЩЕМ ЧАТЕ (${ago(g[last].time)}) ТЕБЕ ОТВЕТИЛИ:\n")
+            sb.append(after.takeLast(6).joinToString("\n") { "- ${if (it.role == "user") "Адонис" else "Геспера"} (${ago(it.time)}): ${TAG_RE.replace(it.content, "[фото]").take(500)}" })
+            sb.append("\nЭто свежее твоих пересказов и заметок. Если на твой вопрос уже ответили — он закрыт, не задавай его снова другими словами.")
+        }
+        return sb.toString()
     }
 
     private fun auroraPrivate(ctx: Context): List<ChatMessage> = ChatStore(ctx).load() + Inbox(ctx).peek()
@@ -399,6 +408,8 @@ object GroupEngine {
     /** Аврора или Геспера сама пишет в общий чат. Вторая может ответить — один раз, без бесконечной переписки ИИ с ИИ. */
     suspend fun autoPost(ctx: Context, who: String, text: String, notify: Boolean = true) {
         val store = HesperaStore(ctx)
+        // снова почти то же самое, а ей на это уже ответили — не отправляем
+        if (repeatsAnswered(text, synchronized(HesperaStore.LOCK) { store.group() }, who)) return
         val busy = synchronized(HesperaStore.LOCK) {
             val g = store.group()
             val playing = DuoEngine.playing(g)
@@ -907,4 +918,24 @@ object HesperaSocial {
         if (p.token.isBlank() || snippet.isBlank()) return
         scope.launch { runCatching { HesperaApi.comment(p.serverUrl, p.token, 0L, text, WHO_AURORA, snippet) } }
     }
+}
+
+/** Основы слов (первые 5 букв слов от 4 букв): похожесть по смыслу, а не по точным словам. */
+private fun stems(s: String): Set<String> =
+    Regex("\\p{L}{4,}").findAll(s.lowercase().replace('ё', 'е')).map { it.value.take(5) }.toSet()
+
+fun similarText(a: String, b: String): Boolean {
+    val x = stems(a)
+    val y = stems(b)
+    if (minOf(x.size, y.size) < 6) return false
+    return (x intersect y).size.toDouble() / minOf(x.size, y.size) >= 0.4
+}
+
+/** Она снова пишет в общий чат почти то же, что раньше, а после того раза ей уже ответили. */
+fun repeatsAnswered(text: String, group: List<ChatMessage>, who: String): Boolean {
+    for (i in group.indices.reversed()) {
+        val m = group[i]
+        if (m.role == who && similarText(text, m.content)) return group.drop(i + 1).any { it.role != who && it.role != "system" }
+    }
+    return false
 }

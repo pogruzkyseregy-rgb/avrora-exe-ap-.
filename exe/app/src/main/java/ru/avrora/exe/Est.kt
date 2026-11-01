@@ -271,9 +271,15 @@ object EstEngine {
         HesperaBus.signal()
     }
 
-    /** Эст сказала что-то в общий чат сама (из лички или пробуждения). */
+    /** Эст сказала что-то в общий чат сама (из лички или пробуждения). Девчонки видят это сразу и могут ответить. */
     fun toGroup(ctx: Context, text: String) {
-        postGroup(ctx, ChatMessage(WHO_EST, text, auto = true))
+        val app = ctx.applicationContext
+        postGroup(app, ChatMessage(WHO_EST, text, auto = true))
+        HesperaNotifications.show(app, "Эст в общем чате: ${text.take(140)}", target = "group")
+        scope.launch {
+            val replies = runCatching { GroupEngine.converse(app, listOf(WHO_AURORA, WHO_HESPERA)) }.getOrDefault(emptyList())
+            replies.filter { it.text.isNotBlank() }.forEach { HesperaNotifications.show(app, "${whoName(it.who)} в общем чате: ${it.text.take(140)}", target = "group") }
+        }
     }
 
     /** Пробуждение: раз в 15 минут из фоновой задачи. force — по кнопке. Возвращает её сообщение или null. */

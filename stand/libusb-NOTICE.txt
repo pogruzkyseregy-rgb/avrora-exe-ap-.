@@ -1,0 +1,1 @@
+libusb-1.0.dll is from the libusb project (https://libusb.info), LGPL-2.1, as shipped with bkerler/edl.

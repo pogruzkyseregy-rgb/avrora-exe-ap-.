@@ -128,14 +128,15 @@ def list_usb() -> tuple[int, str]:
     if os.name == "nt":                      # на Windows libusb нет в системе — берём ту, что везёт edl
         try:
             import importlib.util, usb.backend.libusb1
+            places = [HERE / "libusb-1.0.dll"]
             spec = importlib.util.find_spec("edlclient")
             if spec and spec.origin:
-                for n in ("libusb-1.0.dll", "libusb32-1.0.dll"):
-                    dll = Path(spec.origin).parent / "Windows" / n
-                    if dll.is_file():
-                        backend = usb.backend.libusb1.get_backend(find_library=lambda _x, d=str(dll): d)
-                        if backend:
-                            break
+                places.append(Path(spec.origin).parent / "Windows" / "libusb-1.0.dll")
+            for dll in places:
+                if dll.is_file():
+                    backend = usb.backend.libusb1.get_backend(find_library=lambda _x, d=str(dll): d)
+                    if backend:
+                        break
         except Exception:
             backend = None
     try:

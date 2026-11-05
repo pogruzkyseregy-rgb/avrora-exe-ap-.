@@ -1,19 +1,21 @@
 @echo off
 cd /d "%~dp0"
 if not exist stand_agent.py (
-  echo ERROR: put install.bat into the stand folder, next to stand_agent.py, and run it from there.
+  echo ERROR: run install.bat from the stand folder, next to stand_agent.py.
   pause
   exit /b 1
 )
-where py >nul 2>nul
-if errorlevel 1 (
-  echo ERROR: Python not found. Install it from python.org and tick "Add python.exe to PATH".
+call findpy.cmd
+if not defined PY (
+  echo ERROR: Python not found. Install it from python.org: tick "Add python.exe to PATH", then Install Now.
   pause
   exit /b 1
 )
-echo [1/2] Installing edl and pyusb...
-py -m pip install --upgrade pip
-py -m pip install pyusb https://github.com/bkerler/edl/archive/refs/heads/master.zip
+echo Python: %PY%
+echo [1/2] Installing edl...
+%PY% -m pip install --upgrade pip
+%PY% -m pip install pyusb pyserial docopt pycryptodome pycryptodomex lxml colorama requests
+%PY% -m pip install --no-deps https://github.com/bkerler/edl/archive/refs/heads/master.zip
 echo [2/2] Android platform-tools - fastboot and adb...
 if exist platform-tools\fastboot.exe goto ptok
 if exist platform-tools-latest-windows.zip goto ptunzip
@@ -27,7 +29,8 @@ if not exist platform-tools-latest-windows.zip (
 :ptunzip
 powershell -NoProfile -Command "Expand-Archive -Force platform-tools-latest-windows.zip ."
 :ptok
+echo.
 if exist platform-tools\fastboot.exe (echo OK: platform-tools ready) else (echo ERROR: platform-tools not unpacked)
-py -c "import usb, edlclient; print(\"OK: edl and pyusb ready\")"
-echo Next: Zadig driver, then run:  py stand_agent.py
+%PY% -c "import usb, edlclient.Library.utils; print(\"OK: edl ready\")"
+echo Next: Zadig driver for EDL, then run start.bat
 pause

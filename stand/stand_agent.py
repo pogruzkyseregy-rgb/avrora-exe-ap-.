@@ -5,7 +5,7 @@
 С ПК — ничего сверх этого: запускаются только edl / fastboot / adb, без командной оболочки, а все файлы — только
 внутри папки «стенд» рядом с агентом. Остановить доступ: закрыть окно (Ctrl+C).
 
-Запуск:  py stand_agent.py        (настройки — stand_agent.json рядом; его создаст первый запуск)
+Запуск:  start.bat  (или py stand_agent.py; настройки — stand_agent.json рядом; его создаст первый запуск)
 """
 import json, os, re, shlex, subprocess, sys, time, urllib.error, urllib.parse, urllib.request
 from pathlib import Path
@@ -36,7 +36,25 @@ def load_cfg() -> dict:
     if not c["token"]:
         print(f"В {CFG.name} пустой token."); sys.exit(1)
     c["tools"] = [t for t in c["tools"] if t in ALL_TOOLS]
+    if c["edl"] == "edl":
+        c["edl"] = find_edl()
     return c
+
+
+def find_edl() -> str:
+    """edl.exe ставится в Scripts того Python, которым запущен агент, — PATH для этого не нужен."""
+    import sysconfig
+    dirs = [Path(sys.executable).parent / "Scripts", Path(sys.executable).parent]
+    for scheme in (f"{os.name}_user", None):
+        try:
+            dirs.append(Path(sysconfig.get_path("scripts", scheme) if scheme else sysconfig.get_path("scripts")))
+        except KeyError:
+            pass
+    for d in dirs:
+        for n in ("edl" + EXE, "edl"):
+            if (d / n).is_file():
+                return str(d / n)
+    return "edl"
 
 
 def http(c: dict, method: str, path: str, body: dict | None = None, timeout: float = 60) -> dict:

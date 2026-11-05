@@ -30,10 +30,10 @@ ssh root@92.118.112.46 'T=$(openssl rand -hex 24); sed -i "/^STAND_TOKEN=/d" /op
 
 ## 2. ПК (Windows)
 1. Python с python.org, при установке отметь «Add python.exe to PATH».
-2. Положи папку `stand` куда угодно, запусти `install.bat` — поставит edl, pyusb и platform-tools (fastboot, adb).
+2. Положи папку `stand` куда угодно, запусти `install.bat` — сам найдёт Python, поставит edl и platform-tools (fastboot, adb).
 3. Драйвер EDL: телефон в EDL по кабелю → Zadig (zadig.akeo.ie) → Options → List All Devices → `QUSB__BULK` → **WinUSB** → Replace Driver.
 4. Драйвер fastboot/adb: если `fastboot devices` пуст — Google USB Driver или тот же Zadig на `Android` → WinUSB.
-5. `py stand_agent.py` — создаст `stand_agent.json`. Впиши туда `token` из шага 1 и запусти снова.
+5. `start.bat` — создаст `stand_agent.json`. Впиши туда `token` из шага 1 (Блокнотом) и запусти `start.bat` снова.
 
 В `stand_agent.json` можно поменять: `tools` (что разрешено), `timeout_min` (30 — сколько ждать одну команду), `download_max_mb`.
 

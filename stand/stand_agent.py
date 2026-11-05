@@ -124,8 +124,22 @@ def list_usb() -> tuple[int, str]:
         import usb.core
     except ImportError:
         return 1, "нет pyusb: запусти install.bat"
+    backend = None
+    if os.name == "nt":                      # на Windows libusb нет в системе — берём ту, что везёт edl
+        try:
+            import importlib.util, usb.backend.libusb1
+            spec = importlib.util.find_spec("edlclient")
+            if spec and spec.origin:
+                for n in ("libusb-1.0.dll", "libusb32-1.0.dll"):
+                    dll = Path(spec.origin).parent / "Windows" / n
+                    if dll.is_file():
+                        backend = usb.backend.libusb1.get_backend(find_library=lambda _x, d=str(dll): d)
+                        if backend:
+                            break
+        except Exception:
+            backend = None
     try:
-        devs = list(usb.core.find(find_all=True))
+        devs = list(usb.core.find(find_all=True, backend=backend))
     except Exception as e:
         return 1, f"USB не читается: {type(e).__name__}: {e}"
     names = {(0x05C6, 0x9008): "телефон в EDL (Qualcomm 9008)", (0x18D1, 0x4EE0): "телефон в fastboot", (0x18D1, 0xD00D): "телефон в fastboot"}

@@ -14,7 +14,7 @@ if not defined PY (
 echo Python: %PY%
 echo [1/2] Installing edl...
 %PY% -m pip install --upgrade pip
-%PY% -m pip install pyusb pyserial docopt pycryptodome pycryptodomex colorama requests
+%PY% -m pip install libusb-package pyusb pyserial docopt pycryptodome pycryptodomex colorama requests
 %PY% -m pip install --no-deps https://github.com/bkerler/edl/archive/refs/heads/master.zip
 echo [2/2] Android platform-tools - fastboot and adb...
 if exist platform-tools\fastboot.exe goto ptok

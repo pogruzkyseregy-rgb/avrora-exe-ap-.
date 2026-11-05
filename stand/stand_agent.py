@@ -14,6 +14,7 @@ HERE = Path(__file__).resolve().parent
 CFG = HERE / "stand_agent.json"
 WORK = HERE / "стенд"
 PT = HERE / "platform-tools"
+VERSION = "стенд v5"
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 ALL_TOOLS = ["usb", "edl", "fastboot", "adb", "файлы", "скачать"]
 EXE = ".exe" if os.name == "nt" else ""
@@ -119,30 +120,53 @@ def adb_args(args: list[str]) -> tuple[list[str] | None, str]:
     return out, ""
 
 
+def usb_backend():
+    """На Windows libusb нет в системе: пакет libusb-package, потом dll рядом с агентом, потом dll из edl."""
+    tried = []
+    if os.name != "nt":
+        return None, tried
+    try:
+        import libusb_package
+        b = libusb_package.get_libusb1_backend()
+        if b:
+            return b, tried
+        tried.append("libusb-package: пусто")
+    except Exception as e:
+        tried.append(f"libusb-package: {type(e).__name__}")
+    import usb.backend.libusb1
+    places = [HERE / "libusb-1.0.dll"]
+    try:
+        import importlib.util
+        spec = importlib.util.find_spec("edlclient")
+        if spec and spec.origin:
+            places.append(Path(spec.origin).parent / "Windows" / "libusb-1.0.dll")
+    except Exception:
+        pass
+    for dll in places:
+        if not dll.is_file():
+            tried.append(f"{dll}: нет файла"); continue
+        try:
+            import ctypes
+            ctypes.CDLL(str(dll))
+            b = usb.backend.libusb1.get_backend(find_library=lambda _x, d=str(dll): d)
+            if b:
+                return b, tried
+            tried.append(f"{dll}: не подошла")
+        except Exception as e:
+            tried.append(f"{dll}: {type(e).__name__}: {e}")
+    return None, tried
+
+
 def list_usb() -> tuple[int, str]:
     try:
         import usb.core
     except ImportError:
         return 1, "нет pyusb: запусти install.bat"
-    backend = None
-    if os.name == "nt":                      # на Windows libusb нет в системе — берём ту, что везёт edl
-        try:
-            import importlib.util, usb.backend.libusb1
-            places = [HERE / "libusb-1.0.dll"]
-            spec = importlib.util.find_spec("edlclient")
-            if spec and spec.origin:
-                places.append(Path(spec.origin).parent / "Windows" / "libusb-1.0.dll")
-            for dll in places:
-                if dll.is_file():
-                    backend = usb.backend.libusb1.get_backend(find_library=lambda _x, d=str(dll): d)
-                    if backend:
-                        break
-        except Exception:
-            backend = None
+    backend, tried = usb_backend()
     try:
         devs = list(usb.core.find(find_all=True, backend=backend))
     except Exception as e:
-        return 1, f"USB не читается: {type(e).__name__}: {e}"
+        return 1, f"USB не читается: {type(e).__name__}: {e}" + (f"\nпробовал: {'; '.join(tried)}" if tried else "")
     names = {(0x05C6, 0x9008): "телефон в EDL (Qualcomm 9008)", (0x18D1, 0x4EE0): "телефон в fastboot", (0x18D1, 0xD00D): "телефон в fastboot"}
     lines = [f"{d.idVendor:04x}:{d.idProduct:04x}" + (f"  ← {names[(d.idVendor, d.idProduct)]}" if (d.idVendor, d.idProduct) in names else "")
              for d in devs]
@@ -229,7 +253,7 @@ def handle(c: dict, cmd: str) -> tuple[int, str]:
 def main() -> None:
     c = load_cfg()
     WORK.mkdir(exist_ok=True)
-    print(f"Стенд на связи с {c['server']}. Можно: {', '.join(c['tools'])}. Папка: {WORK}. Остановить: Ctrl+C.")
+    print(f"{VERSION}. Стенд на связи с {c['server']}. Можно: {', '.join(c['tools'])}. Папка: {WORK}. Остановить: Ctrl+C.")
     q = urllib.parse.urlencode({"wait": 25, "agent": os.environ.get("COMPUTERNAME", "pc"), "verbs": ",".join(c["tools"])})
     while True:
         try:

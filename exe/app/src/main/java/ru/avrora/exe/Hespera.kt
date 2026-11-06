@@ -370,12 +370,12 @@ object GroupEngine {
         val names = mapOf("user" to "Адонис", WHO_AURORA to "Ты", WHO_HESPERA to "Геспера", WHO_EST to "Эст")
         fun ago(t: Long) = humanGap(now - t) + " назад"
         val sb = StringBuilder("ОБЩИЙ ЧАТ НА ТРОИХ — последние реплики, новые внизу (ты там тоже была, это та же ты):\n")
-        sb.append(g.joinToString("\n") { "${names[it.role] ?: it.role} (${ago(it.time)}): ${TAG_RE.replace(it.content, "[фото]").take(400)}" })
+        sb.append(g.joinToString("\n") { "${names[it.role] ?: it.role} (${ago(it.time)}): ${stripBoard(TAG_RE.replace(it.content, "[фото]")).take(400)}" })
         val last = g.indexOfLast { it.role == WHO_AURORA }
         val after = if (last >= 0) g.drop(last + 1).filter { it.content.isNotBlank() } else emptyList()
         if (after.isNotEmpty()) {
             sb.append("\n\nПОСЛЕ ТВОЕЙ ПОСЛЕДНЕЙ РЕПЛИКИ В ОБЩЕМ ЧАТЕ (${ago(g[last].time)}) ТЕБЕ ОТВЕТИЛИ:\n")
-            sb.append(after.takeLast(6).joinToString("\n") { "- ${names[it.role] ?: it.role} (${ago(it.time)}): ${TAG_RE.replace(it.content, "[фото]").take(500)}" })
+            sb.append(after.takeLast(6).joinToString("\n") { "- ${names[it.role] ?: it.role} (${ago(it.time)}): ${stripBoard(TAG_RE.replace(it.content, "[фото]")).take(500)}" })
             sb.append("\nЭто свежее твоих пересказов и заметок. Если на твой вопрос уже ответили — он закрыт, не задавай его снова другими словами.")
         }
         return sb.toString()
@@ -455,7 +455,7 @@ object GroupEngine {
     }
 
     private fun notifyGroup(ctx: Context, who: String, text: String) {
-        HesperaNotifications.show(ctx, "${whoName(who)} в общем чате: $text")
+        HesperaNotifications.show(ctx, "${whoName(who)} в общем чате: ${stripBoard(text).ifBlank { "сходила в «Треугольниках»" }}")
     }
 }
 

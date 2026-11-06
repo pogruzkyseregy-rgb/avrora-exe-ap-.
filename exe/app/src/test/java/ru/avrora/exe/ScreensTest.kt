@@ -85,6 +85,8 @@ class ScreensTest {
             ChatMessage(WHO_EST, "Аврора, задача №4: проверь, откуда стучались в порт 22, и закрой лишнее. Отчёт сюда.", now - 4_000),
             ChatMessage(WHO_AURORA, "Сделала. Три адреса из одной подсети, забанила через ufw. Ворчу, но сделала.", now - 3_000, auto = true),
             ChatMessage(WHO_EST, "Принято. Хорошо.", now - 2_000),
+            ChatMessage("user", "Гесп, сыграем в треугольники?", now - 1_500),
+            ChatMessage(WHO_HESPERA, "Давай! Я начала — твой ход.\n[доска: t1|hespera:e5,c3,g7|adonis:e7,d4|ход:adonis|итог:|tri:|last:g7]", now - 1_000),
             ChatMessage(WHO_HESPERA, "Немножко.", now + 25_000, auto = true, trace = duoTrace("", "[]", emptyList()))
         )).toString())
         val ex = ExeStore(ctx)

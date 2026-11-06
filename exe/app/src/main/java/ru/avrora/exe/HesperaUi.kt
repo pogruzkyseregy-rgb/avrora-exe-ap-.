@@ -146,9 +146,13 @@ private fun HespHeader(hvm: HesperaViewModel, onProfile: () -> Unit) {
 
 /** Пузырь сообщения в чатах Гесперы, Эст и общем. who: user, hespera, aurora, est, system. */
 @Composable
-internal fun HBubble(m: ChatMessage, who: String, showName: Boolean, hespAvatar: ByteArray?, onOpen: (Any) -> Unit = {}, thoughts: Boolean = false) {
+internal fun HBubble(m: ChatMessage, who: String, showName: Boolean, hespAvatar: ByteArray?, onOpen: (Any) -> Unit = {}, thoughts: Boolean = false,
+                     boardLive: Boolean = false) {
+    val board = remember(m.content) { parseTri(m.content) }
     if (who == "system") {
-        Text("· ${m.content}", color = TextDim, fontSize = 12.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(start = 6.dp))
+        val rest = stripBoard(m.content)
+        if (rest.isNotEmpty()) Text("· $rest", color = TextDim, fontSize = 12.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(start = 6.dp))
+        if (board != null) Column(Modifier.padding(start = 38.dp)) { TriBoardView(board, boardLive) { onOpen(TriTap(it)) } }
         return
     }
     val mine = who == "user"
@@ -198,9 +202,10 @@ internal fun HBubble(m: ChatMessage, who: String, showName: Boolean, hespAvatar:
                 }
                 val (noMedia, media) = remember(m.content) { splitMedia(m.content) }
                 val voices = remember(m.content) { parseParts(m.content).filterIsInstance<Part.Voice>() }
-                val text = (if (snaps.isEmpty()) noMedia else TAG_RE.replace(noMedia, "")).let { VOICE_RE.replace(it, "") }.trim()
+                val text = (if (snaps.isEmpty()) noMedia else TAG_RE.replace(noMedia, "")).let { VOICE_RE.replace(it, "") }.let { stripBoard(it) }.trim()
                 voices.forEach { VoicePart(it, accent) }
                 if (text.isNotEmpty()) Text(text, color = TextMain, fontSize = 15.sp, lineHeight = 21.sp)
+                if (board != null) TriBoardView(board, boardLive) { onOpen(TriTap(it)) }
                 media.forEach { MediaPart(it, accent, onOpen) }
                 Text(if (m.auto) "сама · " + hTime.format(Date(m.time)) else hTime.format(Date(m.time)), color = TextDim, fontSize = 10.sp,
                     fontFamily = FontFamily.Monospace, modifier = Modifier.align(Alignment.End))
@@ -382,9 +387,11 @@ fun GroupChatPane(hvm: HesperaViewModel, vm: ChatViewModel, onFocus: (Boolean) -
                 Text("Общий чат. Обратись по имени — ответит та, к кому обращаешься. Аврора и Геспера иногда разговаривают здесь вдвоём, " +
                     "а Эст раздаёт им задачи — отчёты появляются здесь же.", color = TextDim, fontSize = 14.sp, modifier = Modifier.padding(top = 30.dp, start = 6.dp))
             }
+            val lastBoard = shown.indexOfLast { BOARD_RE.containsMatchIn(it.content) }
             itemsIndexed(shown) { i, m ->
                 val prev = shown.getOrNull(i - 1)?.role
-                HBubble(m, m.role, showName = prev != m.role, hespAvatar = hvm.avatar, onOpen = onOpen, thoughts = hvm.showThoughts)
+                HBubble(m, m.role, showName = prev != m.role, hespAvatar = hvm.avatar, thoughts = hvm.showThoughts, boardLive = i == lastBoard,
+                    onOpen = { if (it is TriTap) hvm.sendGroup("ход ${it.cell}", vm) else onOpen(it) })
             }
             if (hvm.groupSending) item { Text("пишут…", color = TextDim, fontSize = 13.sp, modifier = Modifier.padding(start = 38.dp)) }
             else if (typing != null) item {

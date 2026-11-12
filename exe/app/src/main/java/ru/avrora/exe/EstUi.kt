@@ -123,19 +123,19 @@ fun EstChatPane(evm: EstViewModel, onFocus: (Boolean) -> Unit, onOpen: (Any) -> 
             TaskBoard(evm, Modifier.weight(1f))
             return@Column
         }
-        LazyColumn(
-            state = list, modifier = Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
+        ChatList(list, Modifier.weight(1f).fillMaxWidth(), EstColor) {
             if (evm.chat.isEmpty()) item { EstEmpty() }
-            itemsIndexed(evm.chat) { _, m ->
+            itemsIndexed(evm.chat) { i, m ->
                 val who = when (m.role) { "user" -> "user"; "system" -> "system"; else -> WHO_EST }
-                HBubble(m, who, showName = false, hespAvatar = null, onOpen = onOpen)
+                Column {
+                    if (needsDay(evm.chat.getOrNull(i - 1)?.time, m.time)) DayDivider(m.time)
+                    HBubble(m, who, showName = false, hespAvatar = null, onOpen = onOpen)
+                }
             }
             if (evm.sending) item { Text("Эст печатает…", color = TextDim, fontSize = 13.sp, modifier = Modifier.padding(start = 38.dp)) }
         }
         ErrorBar(evm.error, onRetry = evm::retry, onClose = evm::clearError)
-        HInput(evm.sending, "Написать Эст", EstColor, onFocus, onAudio = { b, m, n, v -> evm.sendAudio(b, m, n, v) }, hearing = evm.hearing) { t, ph -> evm.send(t, ph) }
+        HInput(evm.sending, "Написать Эст", EstColor, onFocus, draftKey = "est", onAudio = { b, m, n, v -> evm.sendAudio(b, m, n, v) }, hearing = evm.hearing) { t, ph -> evm.send(t, ph) }
     }
 }
 

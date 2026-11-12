@@ -242,15 +242,13 @@ fun ChatScreen(vm: ChatViewModel = viewModel(), hvm: HesperaViewModel = viewMode
                 onSettings = { widgets = true }
             )
 
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.weight(1f).fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
+            ChatList(listState, Modifier.weight(1f).fillMaxWidth(), Glow) {
                 if (vm.messages.isEmpty() && !vm.sending) item { EmptyState() }
                 itemsIndexed(vm.messages) { i, m ->
-                    val showAvatar = m.role != "user" && (i == 0 || vm.messages[i - 1].role == "user")
+                    val newDay = needsDay(vm.messages.getOrNull(i - 1)?.time, m.time)
+                    val showAvatar = m.role != "user" && (i == 0 || newDay || vm.messages[i - 1].role == "user")
+                    Column {
+                    if (newDay) DayDivider(m.time)
                     MessageRow(
                         m = m,
                         showAvatar = showAvatar,
@@ -275,6 +273,7 @@ fun ChatScreen(vm: ChatViewModel = viewModel(), hvm: HesperaViewModel = viewMode
                             }
                         }
                     )
+                    }
                 }
                 if (vm.sending) item { TypingRow() }
             }

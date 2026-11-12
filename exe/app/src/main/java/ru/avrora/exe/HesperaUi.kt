@@ -15,6 +15,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -145,6 +146,7 @@ private fun HespHeader(hvm: HesperaViewModel, onProfile: () -> Unit) {
 }
 
 /** Пузырь сообщения в чатах Гесперы, Эст и общем. who: user, hespera, aurora, est, system. */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 internal fun HBubble(m: ChatMessage, who: String, showName: Boolean, hespAvatar: ByteArray?, onOpen: (Any) -> Unit = {}, thoughts: Boolean = false,
                      boardLive: Boolean = false) {
@@ -181,10 +183,14 @@ internal fun HBubble(m: ChatMessage, who: String, showName: Boolean, hespAvatar:
                 }
                 Spacer(Modifier.width(6.dp))
             }
+            var menu by remember { mutableStateOf(false) }
+            val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+            Box {
             Column(
                 Modifier.widthIn(max = 300.dp).clip(shape)
                     .background(if (mine) BubbleUser else BubbleAurora)
                     .border(1.dp, accent.copy(alpha = 0.5f), shape)
+                    .combinedClickable(onClick = {}, onLongClick = { menu = true })
                     .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
                 val snaps = remember(m.content) { parseParts(m.content).filterIsInstance<Part.Snap>() }
@@ -210,6 +216,14 @@ internal fun HBubble(m: ChatMessage, who: String, showName: Boolean, hespAvatar:
                 Text(if (m.auto) "сама · " + hTime.format(Date(m.time)) else hTime.format(Date(m.time)), color = TextDim, fontSize = 10.sp,
                     fontFamily = FontFamily.Monospace, modifier = Modifier.align(Alignment.End))
             }
+            androidx.compose.material3.DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                androidx.compose.material3.DropdownMenuItem(text = { Text("Копировать") }, onClick = {
+                    menu = false
+                    val plain = stripBoard(VOICE_RE.replace(TAG_RE.replace(splitMedia(m.content).first, ""), "")).trim()
+                    clipboard.setText(androidx.compose.ui.text.AnnotatedString(plain))
+                })
+            }
+            }
         }
         val thought = if (thoughts) remember(m.trace) { duoThought(m.trace) } else ""
         if (thought.isNotBlank()) {
@@ -232,10 +246,12 @@ internal fun HBubble(m: ChatMessage, who: String, showName: Boolean, hespAvatar:
 
 @Composable
 internal fun HInput(
-    sending: Boolean, placeholder: String, accent: Color, onFocus: (Boolean) -> Unit,
+    sending: Boolean, placeholder: String, accent: Color, onFocus: (Boolean) -> Unit, draftKey: String = placeholder,
     onAudio: (ByteArray, String, String, Boolean) -> Unit, hearing: String?, onSend: (String, Uri?) -> Unit
 ) {
-    var input by rememberSaveable(placeholder) { mutableStateOf("") }
+    val dctx = androidx.compose.ui.platform.LocalContext.current
+    var input by rememberSaveable(draftKey) { mutableStateOf(Drafts.get(dctx, draftKey)) }
+    LaunchedEffect(input) { kotlinx.coroutines.delay(400); Drafts.put(dctx, draftKey, input) }
     var photo by remember(placeholder) { mutableStateOf<Uri?>(null) }
     var menu by remember { mutableStateOf(false) }
     val ctx = androidx.compose.ui.platform.LocalContext.current
@@ -276,7 +292,7 @@ internal fun HInput(
             colors = auroraFieldColors()
         )
         Spacer(Modifier.width(6.dp))
-        SendOrMic(can, accent, onSend = { onSend(input, photo); input = ""; photo = null }) { f ->
+        SendOrMic(can, accent, onSend = { onSend(input, photo); input = ""; photo = null; Drafts.put(dctx, draftKey, "") }) { f ->
             onAudio(f.readBytes(), "audio/mp4", "голосовое", true)
             f.delete()
         }
@@ -304,19 +320,19 @@ fun HesperaChatPane(hvm: HesperaViewModel, onProfile: () -> Unit, onFocus: (Bool
     Column(Modifier.fillMaxSize()) {
         HespHeader(hvm, onProfile)
         GradientLine()
-        LazyColumn(
-            state = list, modifier = Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
+        ChatList(list, Modifier.weight(1f).fillMaxWidth(), HespColor) {
             if (hvm.chat.isEmpty()) item { HespEmpty(hvm) }
             itemsIndexed(hvm.chat) { i, m ->
                 val who = if (m.role == "user") "user" else WHO_HESPERA
-                HBubble(m, who, showName = false, hespAvatar = hvm.avatar, onOpen = onOpen)
+                Column {
+                    if (needsDay(hvm.chat.getOrNull(i - 1)?.time, m.time)) DayDivider(m.time)
+                    HBubble(m, who, showName = false, hespAvatar = hvm.avatar, onOpen = onOpen)
+                }
             }
             if (hvm.sending) item { Text("Геспера печатает…", color = TextDim, fontSize = 13.sp, modifier = Modifier.padding(start = 38.dp)) }
         }
         ErrorBar(hvm.error, onRetry = hvm::retry, onClose = hvm::clearError)
-        HInput(hvm.sending, "Написать Геспере", HespColor, onFocus,
+        HInput(hvm.sending, "Написать Геспере", HespColor, onFocus, draftKey = "hespera",
             onAudio = { b, m, n, v -> hvm.sendAudio(b, m, n, v, null) }, hearing = hvm.hearing) { t, ph -> hvm.send(t, ph) }
     }
 }
@@ -379,28 +395,29 @@ fun GroupChatPane(hvm: HesperaViewModel, vm: ChatViewModel, onFocus: (Boolean) -
             IconButton(onClick = { settings = true }) { Icon(Icons.Default.Settings, contentDescription = "Без тебя", tint = TextDim) }
         }
         GradientLine()
-        LazyColumn(
-            state = list, modifier = Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
+        ChatList(list, Modifier.weight(1f).fillMaxWidth(), Violet) {
             if (shown.isEmpty()) item {
                 Text("Общий чат. Обратись по имени — ответит та, к кому обращаешься. Аврора и Геспера иногда разговаривают здесь вдвоём, " +
                     "а Эст раздаёт им задачи — отчёты появляются здесь же.", color = TextDim, fontSize = 14.sp, modifier = Modifier.padding(top = 30.dp, start = 6.dp))
             }
             val lastBoard = shown.indexOfLast { BOARD_RE.containsMatchIn(it.content) }
             itemsIndexed(shown) { i, m ->
-                val prev = shown.getOrNull(i - 1)?.role
-                HBubble(m, m.role, showName = prev != m.role, hespAvatar = hvm.avatar, thoughts = hvm.showThoughts, boardLive = i == lastBoard,
-                    onOpen = { if (it is TriTap) hvm.sendGroup("ход ${it.cell}", vm) else onOpen(it) })
+                val prevMsg = shown.getOrNull(i - 1)
+                val newDay = needsDay(prevMsg?.time, m.time)
+                Column {
+                    if (newDay) DayDivider(m.time)
+                    HBubble(m, m.role, showName = newDay || prevMsg?.role != m.role, hespAvatar = hvm.avatar, thoughts = hvm.showThoughts,
+                        boardLive = i == lastBoard, onOpen = { if (it is TriTap) hvm.sendGroup("ход ${it.cell}", vm) else onOpen(it) })
+                }
             }
             if (hvm.groupSending) item { Text("пишут…", color = TextDim, fontSize = 13.sp, modifier = Modifier.padding(start = 38.dp)) }
             else if (typing != null) item {
-                Text(whoName(typing) + " печатает…", color = if (typing == WHO_AURORA) Glow else HespColor,
+                Text(whoName(typing) + " печатает…", color = triColor(typing),
                     fontSize = 13.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(start = 38.dp))
             }
         }
         ErrorBar(hvm.error, onRetry = { hvm.retryGroup(vm) }, onClose = hvm::clearError)
-        HInput(hvm.groupSending, if (pending) "Вмешаться в разговор" else "Написать всем", Violet, onFocus,
+        HInput(hvm.groupSending, if (pending) "Вмешаться в разговор" else "Написать всем", Violet, onFocus, draftKey = "group",
             onAudio = { b, m, n, v -> hvm.sendAudio(b, m, n, v, vm) }, hearing = hvm.hearing) { t, ph -> hvm.sendGroup(t, vm, ph) }
     }
     if (settings) DuoSettingsDialog(hvm) { settings = false }

@@ -109,11 +109,8 @@ fun EstChatPane(evm: EstViewModel, onFocus: (Boolean) -> Unit, onOpen: (Any) -> 
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> if (uri != null) evm.setAvatar(uri) }
     LaunchedEffect(evm.avatarV) { EstAvatarState.version = evm.avatarV }
     if (folder) FileBrowserDialog(WHO_EST) { folder = false }
-    val list = rememberLazyListState()
-    LaunchedEffect(evm.chat.size, evm.sending, board) {
-        val n = evm.chat.size + if (evm.sending) 1 else 0
-        if (!board && n > 0) list.animateScrollToItem(n - 1)
-    }
+    val list = rememberBottomListState(evm.chat.size)
+    StickToBottom(list, if (board) 0 else evm.chat.size + if (evm.sending) 1 else 0, evm.sending, board)
     Column(Modifier.fillMaxSize()) {
         EstHeader(evm, board, onBoard = { board = !board; if (board) evm.refreshTasks() },
             onAvatar = { pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },

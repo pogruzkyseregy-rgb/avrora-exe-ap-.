@@ -552,7 +552,7 @@ object HesperaNotifications {
         )
         val n = androidx.core.app.NotificationCompat.Builder(ctx, CHANNEL)
             .setSmallIcon(R.drawable.ic_notif)
-            .setContentTitle(if (target == "group") "Аврора и Геспера" else "Геспера")
+            .setContentTitle(when (target) { "group" -> "Общий чат"; "est" -> "Эст"; else -> "Геспера" })
             .setContentText(text)
             .setStyle(androidx.core.app.NotificationCompat.BigTextStyle().bigText(text))
             .setContentIntent(open)
@@ -611,6 +611,9 @@ class HesperaViewModel(app: Application) : AndroidViewModel(app) {
     init {
         HesperaScheduler.apply(app, store.wakeOn || store.duoOn)
         viewModelScope.launch { HesperaBus.flow.collect { reload() } }
+        if (InFlight.busy("hespera")) sending = true
+        if (InFlight.busy("group")) groupSending = true
+        viewModelScope.launch { ReplyBus.flow.collect { if (it == "hespera" || it == "group") syncFromDisk(it) } }
         refreshProfile()
     }
 
@@ -795,7 +798,8 @@ class HesperaViewModel(app: Application) : AndroidViewModel(app) {
         sending = true
         error = null
         val history = chat.toList()
-        viewModelScope.launch {
+        mineChat = true
+        AppScope.launch { InFlight.run(ctx, "hespera") {
             try {
                 val g = synchronized(HesperaStore.LOCK) { store.group() }
                 val r = HesperaApi.chat(ctx, base(), token(), history, g, tools(), nowTimeLine(history))
@@ -805,16 +809,29 @@ class HesperaViewModel(app: Application) : AndroidViewModel(app) {
                     chat.add(ChatMessage("system", "Геспера ответила в общем чате", trace = encodeHesperaTrace(r.trace, r.changes)))
                 }
                 synchronized(HesperaStore.LOCK) { store.saveChat(chat.toList()) }
-                r.toGroup.forEach { t -> launch { runCatching { GroupEngine.autoPost(ctx, WHO_HESPERA, t, notify = false) }; reloadGroup() } }
+                ReplyNotify.show(ctx, "hespera", r.text.ifBlank { r.toGroup.firstOrNull() ?: "" })
+                r.toGroup.forEach { t -> AppScope.launch { runCatching { GroupEngine.autoPost(ctx, WHO_HESPERA, t, notify = false) }; reloadGroup() } }
                 PageSync.apply(ctx, r.changes, notify = false)
                 if (r.changes.isNotEmpty()) refreshProfile()
                 maybeReflect()
             } catch (e: Exception) {
                 error = e.message ?: "Нет связи"
+                ReplyNotify.show(ctx, "hespera", "Сообщение Геспере не дошло: ${e.message ?: "нет связи"}. Открой чат и нажми «Повторить».")
             } finally {
                 sending = false
+                mineChat = false
             }
-        }
+        } }
+    }
+
+    private var mineChat = false
+    private var mineGroup = false
+
+    /** Ответ пришёл в запросе, начатом раньше закрытым экраном, — перечитываем с диска и снимаем «печатает». */
+    private fun syncFromDisk(chatKey: String) {
+        reload()
+        if (chatKey == "hespera" && !mineChat) sending = InFlight.busy("hespera")
+        if (chatKey == "group" && !mineGroup) groupSending = InFlight.busy("group")
     }
 
     /** Раз в 30 сообщений она пересматривает разговор: пишет эпизод в свою память и, если надо, меняет что-то в себе. */
@@ -852,19 +869,27 @@ class HesperaViewModel(app: Application) : AndroidViewModel(app) {
         if (token().isBlank()) { error = "Укажи токен в настройках"; return }
         groupSending = true
         error = null
-        viewModelScope.launch {
+        mineGroup = true
+        AppScope.launch { InFlight.run(ctx, "group") {
             try {
+                val before = synchronized(HesperaStore.LOCK) { store.group() }.size
                 GroupEngine.converse(ctx)
+                val after = synchronized(HesperaStore.LOCK) { store.group() }
+                after.drop(before).lastOrNull { it.role != "user" && it.role != "system" }?.let {
+                    ReplyNotify.show(ctx, "group", "${whoName(it.role)}: ${it.content}")
+                }
                 reloadGroup()
                 reload()
                 refreshProfile()
                 maybeReflectGroup()
             } catch (e: Exception) {
                 error = e.message ?: "Нет связи"
+                ReplyNotify.show(ctx, "group", "Сообщение в общий чат не дошло: ${e.message ?: "нет связи"}. Открой чат и нажми «Повторить».")
             } finally {
                 groupSending = false
+                mineGroup = false
             }
-        }
+        } }
     }
 
     /** Общий чат тоже входит в её память: для неё Адонис и Аврора здесь собеседники, свои реплики — её. */

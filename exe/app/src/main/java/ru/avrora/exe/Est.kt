@@ -427,6 +427,8 @@ class EstViewModel(app: Application) : AndroidViewModel(app) {
         if (store.wakeOn) HesperaScheduler.apply(app, true)
         viewModelScope.launch { EstBus.flow.collect { reload() } }
         viewModelScope.launch { HesperaBus.flow.collect { refreshTasks() } }
+        if (InFlight.busy("est")) sending = true
+        viewModelScope.launch { ReplyBus.flow.collect { if (it == "est") { reload(); if (!mine) sending = InFlight.busy("est") } } }
         refreshTasks()
         refreshProfile()
     }
@@ -504,7 +506,8 @@ class EstViewModel(app: Application) : AndroidViewModel(app) {
         sending = true
         error = null
         val history = chat.toList()
-        viewModelScope.launch {
+        mine = true
+        AppScope.launch { InFlight.run(ctx, "est") {
             try {
                 val g = synchronized(HesperaStore.LOCK) { HesperaStore(ctx).group() }
                 val r = EstApi.chat(ctx, history, g, nowTimeLine(history))
@@ -512,6 +515,7 @@ class EstViewModel(app: Application) : AndroidViewModel(app) {
                 chat.add(ChatMessage("assistant", (r.text.ifBlank { if (r.toGroup.isNotEmpty()) "· сказала в общем чате" else "…" }), trace = encodeHesperaTrace(r.trace, r.changes)))
                 if (note.isNotBlank()) chat.add(ChatMessage("system", note.trim().removePrefix("· ")))
                 synchronized(EstStore.LOCK) { store.saveChat(chat.toList()) }
+                ReplyNotify.show(ctx, "est", r.text.ifBlank { r.toGroup.firstOrNull() ?: "" })
                 r.toGroup.forEach { EstEngine.toGroup(ctx, it) }
                 EstEngine.dispatch(ctx, r.tasksNew + r.tasksRedo)
                 PageSync.apply(ctx, r.changes, notify = false, who = WHO_EST)
@@ -520,11 +524,16 @@ class EstViewModel(app: Application) : AndroidViewModel(app) {
                 maybeReflect()
             } catch (e: Exception) {
                 error = e.message ?: "Нет связи"
+                ReplyNotify.show(ctx, "est", "Сообщение Эст не дошло: ${e.message ?: "нет связи"}. Открой чат и нажми «Повторить».")
             } finally {
                 sending = false
+                mine = false
             }
-        }
+        } }
     }
+
+    /** Этот экран сам ждёт ответа (а не экран, закрытый раньше). */
+    private var mine = false
 
     var hearing by mutableStateOf<String?>(null)
         private set

@@ -25,6 +25,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -106,6 +111,29 @@ fun ChatList(
         }
     }
 }
+
+/**
+ * Держит список внизу. При открытии чата — сразу на последнем сообщении, без прокрутки сверху у тебя на глазах;
+ * дальше новые сообщения подъезжают плавно.
+ */
+@Composable
+fun StickToBottom(state: LazyListState, count: Int, vararg keys: Any?) {
+    var opened by remember { mutableStateOf(false) }
+    LaunchedEffect(count, *keys) {
+        if (count <= 0) return@LaunchedEffect
+        if (!opened) {
+            state.scrollToItem(count - 1)
+            state.scrollBy(1_000_000f)          // до самого низа, даже если последнее сообщение длинное
+            opened = true
+        } else {
+            state.animateScrollToItem(count - 1)
+        }
+    }
+}
+
+/** Список, который открывается сразу на последнем сообщении, а не сверху. */
+@Composable
+fun rememberBottomListState(count: Int): LazyListState = rememberLazyListState(initialFirstVisibleItemIndex = maxOf(0, count - 1))
 
 /** Черновики: недописанное сообщение переживает закрытие приложения. Ключ — какой это чат. */
 object Drafts {

@@ -74,7 +74,7 @@ private data class QuoteDraft(val forward: Boolean, val who: String, val preview
 fun ChatScreen(vm: ChatViewModel = viewModel(), hvm: HesperaViewModel = viewModel(), evm: EstViewModel = viewModel()) {
     val ctx = LocalContext.current
     val keyboard = LocalSoftwareKeyboardController.current
-    val listState = rememberLazyListState()
+    val listState = rememberBottomListState(vm.messages.size)
 
     var input by rememberSaveable { mutableStateOf("") }
     var screen by remember { mutableStateOf(if (vm.token.isBlank()) Screen.Connection else Screen.Chat) }
@@ -111,10 +111,7 @@ fun ChatScreen(vm: ChatViewModel = viewModel(), hvm: HesperaViewModel = viewMode
     }
     val imageOnly = PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
 
-    LaunchedEffect(vm.messages.size, vm.sending) {
-        val count = vm.messages.size + if (vm.sending) 1 else 0
-        if (count > 0) listState.animateScrollToItem(count - 1)
-    }
+    StickToBottom(listState, vm.messages.size + if (vm.sending) 1 else 0, vm.sending)
 
     LaunchedEffect(vm.notice) {
         val n = vm.notice

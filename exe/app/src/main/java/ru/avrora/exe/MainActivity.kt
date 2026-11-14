@@ -29,6 +29,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        AppForeground.visible = true
         // Забираем сообщения, которые Аврора написала в фоне, и убираем уведомление
         vm.drainInbox()
         vm.reloadDiary()
@@ -39,5 +40,10 @@ class MainActivity : ComponentActivity() {
         hvm.reload()
         hvm.refreshProfile()
         HesperaNotifications.clear(this)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        AppForeground.visible = false
     }
 }

@@ -312,11 +312,8 @@ internal fun ErrorBar(err: String?, onRetry: () -> Unit, onClose: () -> Unit) {
 /** Чат с Гесперой. */
 @Composable
 fun HesperaChatPane(hvm: HesperaViewModel, onProfile: () -> Unit, onFocus: (Boolean) -> Unit, onOpen: (Any) -> Unit = {}) {
-    val list = rememberLazyListState()
-    LaunchedEffect(hvm.chat.size, hvm.sending) {
-        val n = hvm.chat.size + if (hvm.sending) 1 else 0
-        if (n > 0) list.animateScrollToItem(n - 1)
-    }
+    val list = rememberBottomListState(hvm.chat.size)
+    StickToBottom(list, hvm.chat.size + if (hvm.sending) 1 else 0, hvm.sending)
     Column(Modifier.fillMaxSize()) {
         HespHeader(hvm, onProfile)
         GradientLine()
@@ -350,7 +347,7 @@ private fun HespEmpty(hvm: HesperaViewModel) {
 /** Общий чат: Адонис, Аврора и Геспера. Их разговор вдвоём показывается по мере «написания». */
 @Composable
 fun GroupChatPane(hvm: HesperaViewModel, vm: ChatViewModel, onFocus: (Boolean) -> Unit, onOpen: (Any) -> Unit = {}) {
-    val list = rememberLazyListState()
+    val list = rememberBottomListState(hvm.group.size)
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
     val pending = hvm.group.any { it.time > now }
     LaunchedEffect(pending, hvm.group.size) {
@@ -365,10 +362,7 @@ fun GroupChatPane(hvm: HesperaViewModel, vm: ChatViewModel, onFocus: (Boolean) -
     // «печатает…» — за полминуты до сообщения, как в мессенджере
     val typing = next?.takeIf { it.time - now < 30_000 }?.role
     var settings by remember { mutableStateOf(false) }
-    LaunchedEffect(shown.size, hvm.groupSending, typing) {
-        val n = shown.size + if (hvm.groupSending || typing != null) 1 else 0
-        if (n > 0) list.animateScrollToItem(n - 1)
-    }
+    StickToBottom(list, shown.size + if (hvm.groupSending || typing != null) 1 else 0, hvm.groupSending, typing)
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().background(Panel).padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Avatar(32.dp)

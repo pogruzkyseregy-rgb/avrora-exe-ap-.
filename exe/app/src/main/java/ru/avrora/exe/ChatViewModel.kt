@@ -141,6 +141,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         runDuePlans()
         refreshHand()
         viewModelScope.launch { InboxBus.flow.collect { drainInbox() } }
+        if (InFlight.busy("aurora")) sending = true
+        viewModelScope.launch { ReplyBus.flow.collect { if (it == "aurora") syncFromDisk() } }
         viewModelScope.launch { PageBus.flow.collect { reloadExe() } }
     }
 
@@ -1352,7 +1354,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 ms[lastUser].time, if (lastUser > 0) ms[lastUser - 1].time else 0L
             )
         }
-        viewModelScope.launch {
+        mine = true
+        AppScope.launch { InFlight.run(appCtx, "aurora") {
             try {
                 val snaps = attachSnaps(raw)
                 val attached = snaps.map { it.second }.toSet()
@@ -1366,7 +1369,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 val answer = ChatMessage("assistant", reply, trace = res.trace)
                 val before = messages.toList()
                 messages.add(answer)
-                persist()
+                val snapshot = messages.toList()
+                withContext(Dispatchers.IO) { store.save(snapshot) }      // сразу на диск: экран мог закрыться
+                ReplyNotify.show(appCtx, "aurora", reply)
                 applyQuoteSaves(reply, before)
                 applyGameMarkers(reply, before)
                 if (res.saves.isNotEmpty() && toolRead) saveFromNet(res.saves)
@@ -1385,22 +1390,38 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
                 toGroup.forEach { t ->
-                    viewModelScope.launch(Dispatchers.IO) { runCatching { GroupEngine.autoPost(appCtx, WHO_AURORA, t, notify = false) } }
+                    AppScope.launch(Dispatchers.IO) { runCatching { GroupEngine.autoPost(appCtx, WHO_AURORA, t, notify = false) } }
                 }
                 resolvePending()
                 maybeWriteDiary()
                 compress(keep = RAW_KEEP, threshold = TRIGGER, announce = false)
             } catch (e: Exception) {
                 error = e.message ?: "Нет связи с сервером"
+                ReplyNotify.show(appCtx, "aurora", "Сообщение не дошло: ${e.message ?: "нет связи"}. Открой чат и нажми «Повторить».")
             } finally {
                 sending = false
+                mine = false
             }
+        } }
+    }
+
+    /** Этот экран сам ждёт ответа (а не экран, закрытый раньше). */
+    private var mine = false
+
+    /** Ответ пришёл в запросе, начатом другим экраном (приложение закрывали): перечитываем чат с диска. */
+    private fun syncFromDisk() {
+        if (mine) return
+        val fresh = store.load()
+        if (fresh.size != messages.size || fresh.lastOrNull()?.time != messages.lastOrNull()?.time) {
+            messages.clear(); messages.addAll(fresh)
+            reloadExe()
         }
+        sending = InFlight.busy("aurora")
     }
 
     private fun persist() {
         val snapshot = messages.toList()
-        viewModelScope.launch(Dispatchers.IO) { store.save(snapshot) }
+        AppScope.launch(Dispatchers.IO) { store.save(snapshot) }
     }
 
     companion object {

@@ -179,11 +179,12 @@ class ScreensTest {
         shot("${theme}_4_group")
         tap("ЭСТ")
         shot("${theme}_9_est")
+        tap("ДОМ")
+        shot("${theme}_11_house")
+        tap("ЧАТ")
         tap("ГЕСПЕРА")
         tap("профиль ›")
         shot("${theme}_5_hespera_profile")
-        tap("ДОМ")
-        shot("${theme}_11_house")
     }
 
     @Test fun ink() = tour("ink")

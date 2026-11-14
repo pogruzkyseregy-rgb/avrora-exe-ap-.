@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ru.avrora.exe.ScreensTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-11-14T01:14:54" hostname="ip-10-0-133-248" time="21.64">
+  <properties/>
+  <testcase name="aurora" classname="ru.avrora.exe.ScreensTest" time="15.831"/>
+  <testcase name="ink" classname="ru.avrora.exe.ScreensTest" time="3.14"/>
+  <testcase name="coral" classname="ru.avrora.exe.ScreensTest" time="2.669"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

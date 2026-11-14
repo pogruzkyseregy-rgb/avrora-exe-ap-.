@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ru.avrora.exe.SocialTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-11-14T01:15:16" hostname="ip-10-0-133-248" time="0.967">
+  <properties/>
+  <testcase name="findPostByWords" classname="ru.avrora.exe.SocialTest" time="0.824"/>
+  <testcase name="pageSnapshot" classname="ru.avrora.exe.SocialTest" time="0.037"/>
+  <testcase name="hesperaChangesApplied" classname="ru.avrora.exe.SocialTest" time="0.031"/>
+  <testcase name="auroraSeesCommentsAndHesperaLikes" classname="ru.avrora.exe.SocialTest" time="0.023"/>
+  <testcase name="repeatedAnsweredQuestionIsCaught" classname="ru.avrora.exe.SocialTest" time="0.019"/>
+  <testcase name="commentMarkerParsed" classname="ru.avrora.exe.SocialTest" time="0.017"/>
+  <testcase name="commentsStoredOnceAndDeleted" classname="ru.avrora.exe.SocialTest" time="0.016"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

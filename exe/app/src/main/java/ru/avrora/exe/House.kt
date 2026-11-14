@@ -256,7 +256,7 @@ fun HouseScreen(hvm: HesperaViewModel, onGear: () -> Unit) {
                     val l = ls.last()
                     val (x, y) = c.pos(now)
                     val px = with(density) { (x * cell).roundToInt() - 70.dp.roundToPx() }
-                    val py = with(density) { (y * cell).roundToInt() - (face).roundToPx() - 34.dp.roundToPx() }
+                    val py = with(density) { (y * cell).roundToInt() - (face).roundToPx() - 44.dp.roundToPx() }
                     Box(Modifier.offset { IntOffset(px.coerceIn(0, (planW - 140.dp).roundToPx().coerceAtLeast(0)), py.coerceAtLeast(0)) }.width(140.dp)
                         .wrapContentSize(Alignment.BottomCenter)) {
                         Text(l.text, color = TextMain, fontSize = 11.sp, lineHeight = 14.sp, maxLines = 3,
@@ -347,6 +347,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawPlan(s: HouseSt
         drawContext.canvas.nativeCanvas.drawText(r.name.uppercase(), (r.x + 0.25f) * cell, (r.y + 0.6f) * cell, label)
     }
     val furnPaint = android.graphics.Paint(label).apply { textSize = cell * 0.32f; textAlign = android.graphics.Paint.Align.CENTER }
+    val smallPaint = android.graphics.Paint(furnPaint).apply { textSize = cell * 0.27f }
     s.furniture.forEach { f ->
         val tl = Offset(f.x * cell + 2, f.y * cell + 2)
         val sz = Size(f.w * cell - 4, f.h * cell - 4)
@@ -369,7 +370,11 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawPlan(s: HouseSt
             "tv" -> drawRect(c, tl, Size(sz.width, cell * 0.25f))
             else -> drawRoundRect(c, tl, sz, CornerRadius(cell * 0.12f), style = Stroke(1.5f))
         }
-        if (f.kind !in setOf("window", "plant", "tv") && f.w * f.h >= 2f)
-            drawContext.canvas.nativeCanvas.drawText(f.label, (f.x + f.w / 2) * cell, (f.y + f.h / 2) * cell + cell * 0.12f, furnPaint)
+        val short = when (f.kind) { "desk" -> "стол"; "fridge" -> "холод."; "telescope" -> "телескоп"; "rack" -> "меч"; "armchair" -> "кресло"
+            "stove" -> "плита"; "shelf" -> "полка"; "window" -> "окно"; "plant" -> "цветок"; "tv" -> "ТВ"; else -> f.label }
+        if (f.w * f.h >= 2f && f.kind !in setOf("window", "tv"))
+            drawContext.canvas.nativeCanvas.drawText(short, (f.x + f.w / 2) * cell, (f.y + f.h / 2) * cell + cell * 0.12f, furnPaint)
+        else
+            drawContext.canvas.nativeCanvas.drawText(short, (f.x + f.w / 2) * cell, (f.y + f.h) * cell + cell * 0.38f, smallPaint)
     }
 }

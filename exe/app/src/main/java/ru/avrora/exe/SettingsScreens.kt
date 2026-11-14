@@ -732,12 +732,11 @@ private fun MemoryScreen(vm: ChatViewModel, onBack: () -> Unit) {
         }
 
         SectionTitle("Резервная копия")
-        Hint("Копия в файл — только чат с Авророй, её память и дневник. Полная копия всех чатов — на сервере, ниже.")
+        Hint("Переписка и память лежат только в этом телефоне. Копия в файле защитит от потери при удалении приложения или смене телефона.")
         OutlinedButton(onClick = { exportLauncher.launch("aurora-backup.json") }) { Text("Сохранить копию в файл") }
         OutlinedButton(onClick = { importLauncher.launch(arrayOf("application/json", "text/plain", "*/*")) }) {
             Text("Загрузить копию из файла")
         }
-        CloudBackupSection()
     }
 
     if (adding) {

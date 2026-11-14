@@ -16,7 +16,6 @@ class MainActivity : ComponentActivity() {
         AuroraNotifications.ensureChannel(this)
         intent?.getStringExtra("open")?.let { vm.openRequest = it }
         AlarmScheduler.reschedule(this)
-        CloudBackup.schedule(this)
         AppTheme.set(AppPrefs(this).theme)
         setContent {
             MaterialTheme(colorScheme = auroraColors(), typography = ConsoleTypography, shapes = ConsoleShapes) { ChatScreen() }
@@ -46,6 +45,5 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         AppForeground.visible = false
-        CloudBackup.soon(this)
     }
 }

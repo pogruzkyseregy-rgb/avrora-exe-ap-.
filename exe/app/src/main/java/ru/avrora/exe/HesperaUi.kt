@@ -362,7 +362,7 @@ fun GroupChatPane(hvm: HesperaViewModel, vm: ChatViewModel, onFocus: (Boolean) -
     // «печатает…» — за полминуты до сообщения, как в мессенджере
     val typing = next?.takeIf { it.time - now < 30_000 }?.role
     var settings by remember { mutableStateOf(false) }
-    StickToBottom(list, shown.size + if (hvm.groupSending || typing != null) 1 else 0, hvm.groupSending, typing)
+    StickToBottom(list, shown.size + if (hvm.groupSending || GroupFlow.busy || typing != null) 1 else 0, hvm.groupSending, GroupFlow.busy, typing)
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().background(Panel).padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Avatar(32.dp)
@@ -404,7 +404,7 @@ fun GroupChatPane(hvm: HesperaViewModel, vm: ChatViewModel, onFocus: (Boolean) -
                         boardLive = i == lastBoard, onOpen = { if (it is TriTap) hvm.sendGroup("ход ${it.cell}", vm) else onOpen(it) })
                 }
             }
-            if (hvm.groupSending) item { Text("пишут…", color = TextDim, fontSize = 13.sp, modifier = Modifier.padding(start = 38.dp)) }
+            if (hvm.groupSending || GroupFlow.busy) item { Text("пишут…", color = TextDim, fontSize = 13.sp, modifier = Modifier.padding(start = 38.dp)) }
             else if (typing != null) item {
                 Text(whoName(typing) + " печатает…", color = triColor(typing),
                     fontSize = 13.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(start = 38.dp))
@@ -426,6 +426,7 @@ private fun DuoSettingsDialog(hvm: HesperaViewModel, onClose: () -> Unit) {
         title = { Text("БЕЗ ТЕБЯ", color = Violet, fontSize = 14.sp, fontFamily = FontFamily.Monospace, letterSpacing = 2.sp) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                ToggleRow("Живой общий чат", "Обсуждаете что-то или играете — после ответов они продолжают сами, не дожидаясь тебя, пока тема не затихнет", hvm.flowOn) { hvm.setFlow(it) }
                 ToggleRow("Разговаривают сами", "Иногда одна из них пишет другой, и они говорят, пока тема не кончится", hvm.duoOn) { hvm.setDuo(it) }
                 Text("КАК ЧАСТО", color = TextDim, fontSize = 9.sp, fontFamily = FontFamily.Monospace, letterSpacing = 1.4.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {

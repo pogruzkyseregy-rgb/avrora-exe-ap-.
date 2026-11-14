@@ -220,7 +220,7 @@ object HesperaApi {
 
     suspend fun group(
         ctx: Context, base: String, token: String, history: List<ChatMessage>, memory: String, persona: String, localTime: String,
-        auroraPrivate: List<ChatMessage>, hesperaPrivate: List<ChatMessage>, responders: List<String>
+        auroraPrivate: List<ChatMessage>, hesperaPrivate: List<ChatMessage>, responders: List<String>, flow: Boolean = false
     ): Pair<List<GroupReply>, List<HesperaChange>> {
         val nowT = System.currentTimeMillis()
         val sent = history.filter { it.role != "system" && it.time <= nowT }.takeLast(60)
@@ -229,7 +229,7 @@ object HesperaApi {
             .put("images", imagesJson(snaps))
             .put("memory", memory).put("persona", persona).put("local_time", localTime)
             .put("aurora_private", msgsJson(auroraPrivate, 15)).put("hespera_private", msgsJson(hesperaPrivate, 15))
-            .put("responders", JSONArray(responders)).put("page", ProfileStore(ctx).pageJson())
+            .put("responders", JSONArray(responders)).put("page", ProfileStore(ctx).pageJson()).put("flow", flow)
         val r = AuroraApi.post(base, "/group/chat", token, body)
         val replies = r.optJSONArray("replies")?.let { arr -> (0 until arr.length()).map { arr.getJSONObject(it) }
             .map { GroupReply(it.optString("who"), it.optString("text"), strings(it.optJSONArray("private")), strings(it.optJSONArray("markers")),
@@ -303,6 +303,10 @@ class HesperaStore(ctx: Context) {
         set(v) { prefs.edit().putString("chat_who", v).apply() }
 
     /** Разговаривают вдвоём без Адониса. */
+    /** Живой общий чат: после ответов они продолжают сами, пока тема жива. */
+    var flowOn: Boolean
+        get() = prefs.getBoolean("flow_on", true)
+        set(v) { prefs.edit().putBoolean("flow_on", v).apply() }
     var duoOn: Boolean
         get() = prefs.getBoolean("duo_on", true)
         set(v) { prefs.edit().putBoolean("duo_on", v).apply() }
@@ -387,7 +391,7 @@ object GroupEngine {
      * Один круг общего чата: отвечают те, кому можно (responders, пусто — обе), ответы ложатся в общий чат,
      * а «[лично: …]» — в их личку. Возвращает ответы.
      */
-    suspend fun converse(ctx: Context, responders: List<String> = emptyList(), dispatchTasks: Boolean = true): List<HesperaApi.GroupReply> = mutex.withLock {
+    suspend fun converse(ctx: Context, responders: List<String> = emptyList(), dispatchTasks: Boolean = true, flow: Boolean = false): List<HesperaApi.GroupReply> = mutex.withLock {
         val prefs = AppPrefs(ctx)
         val store = HesperaStore(ctx)
         val history = synchronized(HesperaStore.LOCK) { store.group() }
@@ -395,7 +399,7 @@ object GroupEngine {
         val mem = MemoryContext.build(MemoryStore(ctx).load(), recent)
         val (replies, changes) = HesperaApi.group(
             ctx, prefs.serverUrl, prefs.token, history, mem, prefs.loadPersona().compile(), nowTimeLine(history),
-            auroraPrivate(ctx), synchronized(HesperaStore.LOCK) { store.chat() }, responders
+            auroraPrivate(ctx), synchronized(HesperaStore.LOCK) { store.chat() }, responders, flow
         )
         val now = System.currentTimeMillis()
         synchronized(HesperaStore.LOCK) {
@@ -406,7 +410,7 @@ object GroupEngine {
                     g.add(ChatMessage(r.who, r.text, now + i, trace = tr))
                 }
             }
-            if (replies.none { it.text.isNotBlank() } && responders.isEmpty()) g.add(ChatMessage("system", "обе промолчали", now))
+            if (replies.none { it.text.isNotBlank() } && responders.isEmpty() && !flow) g.add(ChatMessage("system", "обе промолчали", now))
             store.saveGroup(g)
         }
         replies.forEach { r -> r.private.forEach { toPrivate(ctx, r.who, it) } }
@@ -680,6 +684,9 @@ class HesperaViewModel(app: Application) : AndroidViewModel(app) {
     // ---------- вдвоём ----------
     var duoOn by mutableStateOf(store.duoOn)
         private set
+    var flowOn by mutableStateOf(store.flowOn)
+        private set
+    fun setFlow(on: Boolean) { store.flowOn = on; flowOn = on; if (!on) GroupFlow.stop() }
     var duoFreq by mutableStateOf(store.duoFreq)
         private set
     var showThoughts by mutableStateOf(store.showThoughts)
@@ -856,6 +863,7 @@ class HesperaViewModel(app: Application) : AndroidViewModel(app) {
             if (content == null) return@launch
             // вошёл посреди их разговора: недосказанное отменяется, дальше они говорят уже с ним
             DuoEngine.interrupt(ctx)
+            GroupFlow.stop()
             reloadGroup()
             group.add(ChatMessage("user", content))
             synchronized(HesperaStore.LOCK) { store.saveGroup(group.toList()) }
@@ -882,6 +890,7 @@ class HesperaViewModel(app: Application) : AndroidViewModel(app) {
                 reload()
                 refreshProfile()
                 maybeReflectGroup()
+                GroupFlow.start(ctx)
             } catch (e: Exception) {
                 error = e.message ?: "Нет связи"
                 ReplyNotify.show(ctx, "group", "Сообщение в общий чат не дошло: ${e.message ?: "нет связи"}. Открой чат и нажми «Повторить».")

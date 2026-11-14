@@ -54,10 +54,11 @@ import java.util.Locale
 import kotlin.random.Random
 import kotlinx.coroutines.delay
 
-/** Четыре вкладки нижней полоски. Приложение открывается на ленте. */
+/** Вкладки нижней полоски. Приложение открывается на ленте. */
 enum class Tab(val label: String, val glyph: Glyph) {
     Feed("ЛЕНТА", Glyph.Feed),
     Chat("ЧАТ", Glyph.Chat),
+    House("ДОМ", Glyph.House),
     Gallery("ГАЛЕРЕЯ", Glyph.Gallery),
     Profile("ПРОФИЛЬ", Glyph.Profile)
 }

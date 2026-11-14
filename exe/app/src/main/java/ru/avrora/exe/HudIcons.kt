@@ -31,7 +31,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-enum class Glyph { Profile, Clock, Memory, Diary, Hand, Settings, Feed, Chat, Gallery, Quote, Dice, Alarm }
+enum class Glyph { Profile, Clock, Memory, Diary, Hand, Settings, Feed, Chat, House, Gallery, Quote, Dice, Alarm }
 
 /** Уголки рамки в духе HUD: четыре «Г» по углам. */
 fun Modifier.cornerBrackets(color: Color, len: Dp = 7.dp, width: Dp = 1.5.dp): Modifier = drawBehind {
@@ -100,6 +100,13 @@ internal fun DrawScope.drawGlyph(g: Glyph, c: Color) {
             drawPath(p, c, style = st)
             drawLine(c, o(0.3f, 0.38f), o(0.7f, 0.38f), strokeWidth = w, cap = StrokeCap.Round)
             drawLine(c, o(0.3f, 0.52f), o(0.56f, 0.52f), strokeWidth = w, cap = StrokeCap.Round)
+        }
+        Glyph.House -> {
+            val p = Path()
+            p.moveTo(s * 0.14f, s * 0.48f); p.lineTo(s * 0.5f, s * 0.16f); p.lineTo(s * 0.86f, s * 0.48f)
+            drawPath(p, c, style = st)
+            drawRect(c, o(0.24f, 0.44f), Size(s * 0.52f, s * 0.4f), style = st)
+            drawRect(c, o(0.44f, 0.62f), Size(s * 0.12f, s * 0.22f), style = st)
         }
         Glyph.Gallery -> {
             drawRoundRect(c, o(0.12f, 0.18f), Size(s * 0.76f, s * 0.64f), androidx.compose.ui.geometry.CornerRadius(s * 0.05f), style = st)

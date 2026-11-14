@@ -78,6 +78,7 @@ fun ChatScreen(vm: ChatViewModel = viewModel(), hvm: HesperaViewModel = viewMode
 
     var input by rememberSaveable { mutableStateOf("") }
     var screen by remember { mutableStateOf(if (vm.token.isBlank()) Screen.Connection else Screen.Chat) }
+    RestoreOffer(vm.token)
     var showPanel by remember { mutableStateOf(false) }
     var tab by remember { mutableStateOf(Tab.Feed) }
     var booted by rememberSaveable { mutableStateOf(!vm.bootScreenOn) }
